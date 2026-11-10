@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Last Circle</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #2c7aa3; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; cursor: crosshair; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 1px 3px #000b; }
+  #left { top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; font-weight: 800; font-size: 22px; line-height: 1.15; white-space: nowrap; }
+  #left small { display: block; font-size: 13px; font-weight: 700; }
+  #left .warn { color: #ffb3c0; }
+  #feed { top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 46vw; max-width: 300px; font-size: 12px; text-align: right; }
+  #feed div { display: inline-block; margin: 0 0 3px; padding: 2px 8px; border-radius: 8px; background: #0b111a8c; }
+  #feed i { font-style: normal; opacity: .75; }
+  #toast { top: 27%; left: 0; right: 0; text-align: center; font-size: 22px; font-weight: 800; transition: opacity .4s; }
+  #hint { top: calc(max(10px, env(safe-area-inset-top)) + 62px); left: 0; right: 0; padding: 0 16px; text-align: center; font-size: 13px; font-weight: 700; transition: opacity .8s; }
+  #hint span { display: inline-block; padding: 6px 14px; border-radius: 14px; background: #0b111aa8; }
+  #net { bottom: max(8px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); font-size: 12px; opacity: .8; }
+  #bars { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 18px); left: 50%; transform: translateX(-50%); width: min(320px, 56vw); text-align: center; }
+  #gun { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .bar { position: relative; height: 14px; margin-top: 4px; border-radius: 7px; background: #0b111aa8; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; transition: width .15s; }
+  #hp i { background: linear-gradient(#8ef08e, #4ec35a); } #hp.low i { background: linear-gradient(#ff8d8d, #e04848); }
+  #ar { height: 7px; } #ar i { background: #5ab8ff; }
+  #slots { position: fixed; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 74px); transform: translateX(-50%); display: flex; gap: 6px; }
+  #slots button { position: relative; min-width: 72px; min-height: 46px; padding: 4px 8px; border: 2px solid #ffffff30; border-radius: 11px; background: #0b111acc; color: #fff;
+                  font: 700 11px/1.2 system-ui, sans-serif; cursor: pointer; touch-action: none; }
+  #slots button b { display: block; font-size: 13px; } #slots button span { font-variant-numeric: tabular-nums; opacity: .85; }
+  #slots kbd { position: absolute; top: 2px; left: 6px; font: 700 10px system-ui, sans-serif; opacity: .5; }
+  #slots button.on { border-color: #ffd166; background: #2b2a14d9; } #slots button.no { color: #ffffff55; background: #0b111a99; }
+  #slots button.med { border-color: #ff8d8d66; }
+  .touch #slots { left: auto; right: max(8px, env(safe-area-inset-right)); top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; }
+  .touch #slots button { min-width: 66px; min-height: 48px; } .touch #slots kbd { display: none; }
+  .touch #hint { top: auto; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 84px); }
+  #watch { position: fixed; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 26px); transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center;
+           align-items: center; gap: 8px; width: min(420px, calc(100vw - 32px)); text-align: center; text-shadow: 0 1px 3px #000b; font-weight: 800; }
+  #watch p { width: 100%; margin: 0; }
+  #watch button, .card button { min-height: 46px; padding: 0 18px; border: 0; border-radius: 12px; font: 800 15px system-ui, sans-serif; cursor: pointer; }
+  button.go { background: #ffd166; color: #2a1f05; } button.go:disabled { background: #6b6f78; color: #d9dce2; cursor: default; }
+  button.soft { background: #ffffff26; color: #fff; }
+  #over { position: fixed; inset: 0; display: grid; place-items: center; background: #0b111a66; }
+  #over[hidden], #watch[hidden], #slots[hidden], #bars[hidden], .stick[hidden] { display: none; }
+  .card { box-sizing: border-box; width: min(380px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; padding: 20px; border-radius: 16px; background: #141c28f2; border: 1px solid #ffffff26; text-align: center; }
+  .card h2 { margin: 0 0 4px; font-size: 25px; line-height: 1.15; } #overSub { opacity: .85; font-size: 14px; }
+  .card h3 { margin: 14px 0 4px; font-size: 12px; color: #ffd166; text-transform: uppercase; letter-spacing: .06em; text-align: left; }
+  .card ol { margin: 0; padding-left: 26px; font-size: 14px; text-align: left; }
+  .card ul { margin: 0; padding: 0; list-style: none; font-size: 14px; text-align: left; } .card ul em { display: inline-block; width: 38px; font-style: normal; opacity: .6; }
+  .card li span { float: right; font-variant-numeric: tabular-nums; opacity: .85; } .card li.me { color: #ffd166; font-weight: 700; }
+  .card .row { display: flex; gap: 8px; margin-top: 16px; } .card .row button { flex: 1; }
+  .card p { margin: 10px 0 0; font-size: 13px; opacity: .7; }
+  .stick { position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #ffffff55; background: #ffffff14; pointer-events: none; }
+  .stick i { position: absolute; left: 34px; top: 34px; width: 52px; height: 52px; border-radius: 50%; background: #ffffff70; }
+  #safe { position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); width: 0; height: 0; pointer-events: none; }
+  @media (max-width: 640px) { #left { font-size: 18px; } #left small { font-size: 12px; } #feed { top: calc(max(10px, env(safe-area-inset-top)) + 106px); } #bars { width: min(240px, 60vw); } }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="safe"></div>
+<div class="hud" id="left"></div>
+<div class="hud" id="feed"></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="hint"></div>
+<div class="hud" id="bars"><div id="gun"></div><div class="bar" id="hp"><i></i></div><div class="bar" id="ar"><i></i></div></div>
+<div class="hud" id="net">Connecting…</div>
+<div id="slots"></div>
+<div id="watch" hidden><p id="watchText"></p><button class="go" id="again2">Play again</button><button class="soft" id="results">Results</button></div>
+<div class="stick" id="stickMove" hidden><i></i></div>
+<div class="stick" id="stickAim" hidden><i></i></div>
+<div id="over" hidden><div class="card">
+  <h2 id="overTitle"></h2><div id="overSub"></div>
+  <h3>This match</h3><ul id="standings"></ul>
+  <h3>Most kills in one match</h3><ol id="board"><li>Loading…</li></ol>
+  <div class="row"><button class="go" id="again">Play again</button><button class="soft" id="watchBtn">Watch</button></div><p id="next"></p>
+</div></div>
+<script>
+/* ═══ LAST CIRCLE · a Multiplayer Agent starter ═══════════════════════════════════════
+ * Top-down battle royale. Land, loot, stay inside the shrinking circle: last one standing wins.
+ * Versus, 2–24 players; bots fill the match to about 16 fighters.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ island size, circle phases, health, armor, medkits, ammo, bots
+ *   WEAPONS & LOOT  the four weapons, the six kinds of loot, what turns up where
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
+ *   MAP ........... the seeded island (houses, trees, rocks, crates, loot, landing spots) and collision
+ *   ZONE .......... the safe circle, worked out from the timestamps in `match`
+ *   FIGHTERS ...... what people and bots share: firing, reloading, healing, picking things up
+ *   BULLETS ....... bullets every screen flies, and who decides a hit
+ *   MATCH (HOST) .. the match, loot, crates, who is out and in what place, the bots. Only the host writes these.
+ *   BOT BRAIN ..... how a bot loots, fights, heals, finds doors and runs from the circle
+ *   ME ............ landing, moving, shooting, looting, getting hit, watching. Each player writes its own.
+ *   OTHERS ........ everyone else, eased between snapshots
+ *   DRAW .......... camera, island, houses and roofs, loot, fighters, bullets, the circle, minimap
+ *   HUD & RESULTS . players left, circle timer, kill feed, health, weapons, results card, leaderboard
+ *   INPUT ......... WASD + mouse + keys, twin thumb sticks and buttons on touch
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `p` (one packed JSON field: x, y, aim, hp, armor, weapon,
+ *     guns, dead, who got you, the match you're in) about 12 times a second, `hb` (heartbeat)
+ *     once a second, `n`/`c` (name, color) once. Health, armor, ammo and medkits are your own.
+ *   - Shots are events: "shot" {x, y, a, w, s}. `s` seeds the spread, so every screen flies the
+ *     same pellets. A HIT IS THE VICTIM'S OWN FACT (as in Twin-Stick Arena): only you check
+ *     bullets against yourself and take the damage; at 0 you set dead in `p` and send "down"
+ *     {v, by, w, x, y, g, m}. The host does this for bots. Elsewhere a bullet just stops in a spark.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s), worked
+ *     out every frame. Only the host writes the shared fields:
+ *       `match` {id, v, phase, seed, t0, zone, drop, endsAt, winner}: the seed builds the same
+ *               island on every screen, `zone` is the circle's schedule as timestamps and `drop`
+ *               says where each person lands.
+ *       `world` {m, v, t, c, hp, d, g, nid}: loot taken, crates broken, crate damage, dropped
+ *               loot, and the latest pickups (who got what).
+ *       `tally` {m, v, e}: who is out, in what place, and who got them (kills are counted from it).
+ *       `bots`  every bot, 10 times a second.
+ *     A new host adopts all four and carries on: same island, same circle, same bots.
+ *   - Loot: walking over an item sends "take" {id}. The host gives it to the first claim and adds
+ *     [item, player, kind] to world.g; that player puts it in its own pockets.
+ *   - Bot shots go out batched, 10 times a second: "shots" {list: [[bot, x, y, a, w, s], ...]}.
+ *   - "again": Play again. The next match starts at once if no person is still in this one.
+ *   - ?attract plays offline with bots only (the preview video is recorded from it).
+ *   - Leaderboard "kills": each player's most kills in one match, shown on the results card.
+ */
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  map: 3000,            // the island is map × map px
+  seats: 16,            // bots fill the match up to this many fighters (20 bots at most: they share one field)
+  hp: 100,              // health
+  radius: 20,           // fighter size, px
+  speed: 255,           // px/s
+  healSlow: 0.45,       // share of your speed while you use a medkit
+  armorSoak: 0.5,       // share of every hit your armor takes instead of you
+  vestArmor: 50,        // armor one vest gives (100 at most)
+  medHeal: 50,          // health a medkit gives back ...
+  medMs: 1800,          // ... after this many ms
+  maxMeds: 3,           // medkits you can carry
+  ammoBox: 30,          // rounds in an ammo box
+  gunAmmo: 20,          // spare rounds that come with a gun (it also comes loaded)
+  maxAmmo: 180,         // spare rounds you can carry (every gun shares them)
+  pickup: 36,           // px: walk this close to loot to pick it up
+  lateJoinMs: 30000,    // people who arrive this soon after a match starts still land
+  resultsMs: 10000,     // ms the final results show before the next match
+  watchMs: 25000,       // once no person is still in, the next match starts after this long anyway
+  // the safe circle, phase by phase: [wait s, shrink s, radius as a share of the map, damage per second outside]
+  zone: [[30, 20, 0.36, 2], [18, 15, 0.21, 4], [14, 12, 0.11, 7], [10, 10, 0.05, 12], [8, 12, 0, 20]],
+  crateHp: 60,          // damage that breaks a crate open
+  botAim: 0.2,          // radians a bot's aim wanders
+  botReact: 0.65,       // seconds a bot waits before it shoots at someone new
+  botFireSlow: 2.0,     // bots pull the trigger this much slower than people can
+  botRange: 420,        // px: bots pick fights this close (a bolder bot a bit further)
+  botCalmMs: 20000,     // for this long after landing, bots loot and only fight back (or fight someone right next to them)
+  board: "kills",       // leaderboard name
+};
+
+// ── WEAPONS & LOOT ──────────────────────────────────────────────────────────────────
+// Per weapon: damage per bullet, seconds between shots, bullet speed (px/s), range (px), spread (radians),
+// bullets per shot, magazine, reload seconds; len/wid = how the barrel is drawn.
+const GUNS = {
+  f: { name: "Fists", dmg: 24, every: 0.45, speed: 1000, range: 50, spread: 0, pellets: 1, mag: 0, reload: 0, len: 0, wid: 0, color: "#ffffff" },
+  p: { name: "Pistol", dmg: 15, every: 0.24, speed: 1150, range: 640, spread: 0.04, pellets: 1, mag: 12, reload: 1.1, len: 24, wid: 8, color: "#ffd166" },
+  s: { name: "Shotgun", dmg: 11, every: 0.85, speed: 1000, range: 330, spread: 0.24, pellets: 7, mag: 5, reload: 1.8, len: 38, wid: 11, color: "#ff8a5b" },
+  r: { name: "Rifle", dmg: 13, every: 0.11, speed: 1500, range: 900, spread: 0.07, pellets: 1, mag: 30, reload: 2.0, len: 50, wid: 8, color: "#7bdcff" },
+};
+const SLOTS = ["f", "p", "s", "r"];       // keys 1–4
+const RANK = { f: 0, p: 1, s: 2, r: 3 };  // a gun you pick up goes in your hands if it ranks higher
+// Loot kinds: the three guns, a = ammo box, v = armor vest, m = medkit.
+const LOOT = { p: { name: "Pistol", color: "#ffd166" }, s: { name: "Shotgun", color: "#ff8a5b" }, r: { name: "Rifle", color: "#7bdcff" },
+  a: { name: "Ammo", color: "#f2c94c" }, v: { name: "Armor", color: "#5ab8ff" }, m: { name: "Medkit", color: "#ff6b6b" } };
+// What turns up where: [kind, weight]. Every house has one gun plus two more things.
+const HOUSE_GUN = [["p", 5], ["s", 3], ["r", 2]];
+const HOUSE_LOOT = [["a", 4], ["v", 2], ["m", 3], ["p", 1], ["s", 1], ["r", 1]];
+const CRATE_LOOT = [["r", 3], ["s", 2], ["v", 3], ["m", 1], ["a", 1]];
+const FIELD_LOOT = [["a", 4], ["m", 3], ["v", 1], ["p", 2]];
+const BOT_NAMES = ["Viper", "Nova", "Rex", "Kilo", "Jinx", "Bolt", "Echo", "Blaze", "Moss", "Pike", "Zara", "Duke", "Ivy", "Flint", "Sage", "Onyx", "Rook", "Wren", "Ash", "Juno"];
+const COLORS = ["#ff5d73", "#4cc9f0", "#ffd166", "#c77dff", "#ff9f1c", "#ffffff", "#3a56ff", "#f15bb5", "#2ec4b6", "#2b2d42", "#b5179e", "#9ef01a",
+  "#00f5d4", "#7209b7", "#ffafcc", "#e63946", "#a0c4ff", "#fee440", "#8d99ae", "#ff006e", "#fb5607", "#06d6a0", "#bc6c25", "#3a86ff"];
+const ROOFS = ["#b4533e", "#3f6f8f", "#6d5a8a", "#8a6a3e", "#4f7f5a", "#9b3f5c"];
+const KEEP = { f: 0, p: 260, s: 120, r: 360 }; // distance a bot likes to fight at, by weapon
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'last-circle',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+if (ATTRACT) Object.assign(CONFIG, { map: 1500, seats: 10, resultsMs: 1500, watchMs: 9000, botReact: 0.15, botRange: 820, botFireSlow: 1.1, botCalmMs: 0,
+  zone: [[1, 9, 0.34, 6], [2, 7, 0.19, 10], [2, 6, 0.08, 16], [2, 6, 0, 26]] });
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true,
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+const parsed = new Map();
+/** A JSON value from state, parsed once per change (read-only: never mutate what this returns). */
+function parseOnce(key, raw, fallback) {
+  const c = parsed.get(key);
+  if (c && c.raw === raw) return c.v;
+  const v = parse(raw, fallback); parsed.set(key, { raw, v }); return v;
+}
+let net = null, S = { entities: { players: {} }, shared: {} };
+const seenHb = new Map();
+/** Players whose heartbeat moved in the last 3s (plus us), sorted by sessionId. */
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+let frameAt = 0, wokeAt = -1e9; // my loop's last frame, and when it last woke from a stall (a frozen or background tab)
+/** Never while my own loop is stalled, nor for 0.7s after it wakes: the room moved on without me, so the newer state lands first. */
+const isHost = () => livePlayers()[0] === net.sessionId && performance.now() - frameAt < 1000 && performance.now() - wokeAt > 700;
+const $ = (id) => document.getElementById(id);
+const safeColor = (c) => (/^#[0-9a-fA-F]{3,8}$/.test(c) ? c : "#cccccc"); // colors from other screens end up in HTML
+
+// ── MAP ─────────────────────────────────────────────────────────────────────────────
+// Built from match.seed with a seeded random (mulberry32), so every screen builds the same island.
+// Walls and crates are rects {x, y, w, h}; rocks and tree trunks are circles {x, y, r}.
+const R = CONFIG.radius;
+function mulberry32(a) {
+  return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+let MAP = null;          // the island of the current match
+let crateBroken = "";    // world.c: "x" where a crate is broken open
+function mapFor(seed) { if (!MAP || MAP.seed !== seed) MAP = makeMap(seed, CONFIG.map); return MAP; }
+
+function makeMap(seed, M) {
+  const rnd = mulberry32(seed), int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const pickW = (table) => { let n = rnd() * table.reduce((s, [, w]) => s + w, 0); for (const [k, w] of table) if ((n -= w) < 0) return k; return table[0][0]; };
+  const map = { seed, size: M, houses: [], walls: [], crates: [], trees: [], rocks: [], loot: [], spots: [], blotches: [], grid: new Map() };
+  const T = 16, DOOR = 84; // wall thickness, door width
+  const nearHouse = (x, y, pad) => map.houses.some((h) => x > h.x - pad && x < h.x + h.w + pad && y > h.y - pad && y < h.y + h.h + pad);
+  const nearThing = (x, y, pad) => map.trees.some((o) => Math.hypot(o.x - x, o.y - y) < o.t + pad) || map.rocks.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + pad) ||
+    map.crates.some((c) => Math.hypot(c.x + c.w / 2 - x, c.y + c.h / 2 - y) < 36 + pad);
+  const nearSpot = (x, y, pad) => map.spots.some((s) => Math.hypot(s.x - x, s.y - y) < pad);
+  const addLoot = (k, x, y, crate = -1) => map.loot.push({ id: map.loot.length, k, x: Math.round(x), y: Math.round(y), crate });
+  // houses: four walls, a door in two of them, one gun and two more things inside
+  for (let tries = 0; map.houses.length < Math.round(M * M / 470000) && tries < 500; tries++) {
+    const w = int(24, 32) * 10, h = int(18, 23) * 10, x = int(140, M - 140 - w), y = int(140, M - 140 - h);
+    if (map.houses.some((o) => x < o.x + o.w + 180 && x + w + 180 > o.x && y < o.y + o.h + 180 && y + h + 180 > o.y)) continue;
+    const house = { x, y, w, h, roof: ROOFS[int(0, ROOFS.length - 1)], doors: [], roofA: 1 };
+    const doorSides = rnd() < 0.5 ? ["top", "bottom"] : ["left", "right"];
+    for (const side of ["top", "bottom", "left", "right"]) {
+      const flat = side === "top" || side === "bottom", len = flat ? w : h;
+      const wx = side === "right" ? x + w - T : x, wy = side === "bottom" ? y + h - T : y;
+      if (!doorSides.includes(side)) { map.walls.push(flat ? { x: wx, y: wy, w, h: T } : { x: wx, y: wy, w: T, h }); continue; }
+      const at = int(T + 24, len - T - 24 - DOOR), mid = at + DOOR / 2;
+      if (flat) map.walls.push({ x: wx, y: wy, w: at, h: T }, { x: wx + at + DOOR, y: wy, w: w - at - DOOR, h: T });
+      else map.walls.push({ x: wx, y: wy, w: T, h: at }, { x: wx, y: wy + at + DOOR, w: T, h: h - at - DOOR });
+      const d = side === "top" ? { x: x + mid, y, nx: 0, ny: -1 } : side === "bottom" ? { x: x + mid, y: y + h, nx: 0, ny: 1 } : side === "left" ? { x, y: y + mid, nx: -1, ny: 0 } : { x: x + w, y: y + mid, nx: 1, ny: 0 };
+      house.doors.push({ x: d.x, y: d.y, out: { x: d.x + d.nx * 48, y: d.y + d.ny * 48 }, in: { x: d.x - d.nx * 42, y: d.y - d.ny * 42 }, land: { x: d.x + d.nx * 90, y: d.y + d.ny * 90 } });
+    }
+    map.houses.push(house);
+    for (let i = 0; i < 3; i++) addLoot(i === 0 ? pickW(HOUSE_GUN) : pickW(HOUSE_LOOT), x + T + 34 + (w - 2 * T - 68) * i / 2, int(y + T + 34, y + h - T - 34));
+  }
+  // landing spots: outside a door of every house, then out in the open
+  for (const h of map.houses) map.spots.push({ ...h.doors[int(0, h.doors.length - 1)].land });
+  for (let tries = 0; map.spots.length < 28 && tries < 800; tries++) {
+    const x = int(150, M - 150), y = int(150, M - 150);
+    if (!nearHouse(x, y, 70) && !nearSpot(x, y, 300)) map.spots.push({ x, y });
+  }
+  for (let tries = 0; map.rocks.length < Math.round(M * M / 260000) && tries < 800; tries++) {
+    const r = int(26, 42), x = int(80, M - 80), y = int(80, M - 80);
+    if (!nearHouse(x, y, r + 40) && !nearThing(x, y, r + 50) && !nearSpot(x, y, r + 50)) map.rocks.push({ x, y, r });
+  }
+  for (let tries = 0; map.crates.length < Math.round(M * M / 300000) && tries < 800; tries++) {
+    const x = int(90, M - 90), y = int(90, M - 90);
+    if (nearHouse(x, y, 70) || nearThing(x, y, 70) || nearSpot(x, y, 70)) continue;
+    map.crates.push({ x: x - 26, y: y - 26, w: 52, h: 52 });
+    addLoot(pickW(CRATE_LOOT), x, y, map.crates.length - 1);
+  }
+  for (let tries = 0; map.trees.length < Math.round(M * M / 100000) && tries < 1500; tries++) {
+    const r = int(40, 58), x = int(60, M - 60), y = int(60, M - 60);
+    if (!nearHouse(x, y, 30 + r * 0.5) && !nearThing(x, y, r * 0.6 + 34) && !nearSpot(x, y, r * 0.5 + 40)) map.trees.push({ x, y, r, t: Math.round(r * 0.36) });
+  }
+  for (let tries = 0, n = 0; n < Math.round(M * M / 330000) && tries < 800; tries++) {
+    const x = int(80, M - 80), y = int(80, M - 80);
+    if (!nearHouse(x, y, 30) && !nearThing(x, y, 34)) { addLoot(pickW(FIELD_LOOT), x, y); n++; }
+  }
+  for (let i = 0; i < Math.round(M * M / 90000); i++) map.blotches.push({ x: int(0, M), y: int(0, M), r: int(70, 200), dark: rnd() < 0.55 });
+  // collision grid: every obstacle sits in each 128px cell it (plus a fighter's radius) touches
+  const CELL = 128, put = (o, x0, y0, x1, y1) => {
+    for (let cx = Math.floor((x0 - R) / CELL); cx <= Math.floor((x1 + R) / CELL); cx++)
+      for (let cy = Math.floor((y0 - R) / CELL); cy <= Math.floor((y1 + R) / CELL); cy++) {
+        const key = (cx + 4) * 4096 + cy + 4;
+        if (!map.grid.has(key)) map.grid.set(key, []);
+        map.grid.get(key).push(o);
+      }
+  };
+  for (const w of map.walls) put({ kind: "wall", x: w.x, y: w.y, w: w.w, h: w.h }, w.x, w.y, w.x + w.w, w.y + w.h);
+  map.crates.forEach((c, i) => put({ kind: "crate", i, x: c.x, y: c.y, w: c.w, h: c.h }, c.x, c.y, c.x + c.w, c.y + c.h));
+  for (const t of map.trees) put({ kind: "tree", x: t.x, y: t.y, r: t.t }, t.x - t.t, t.y - t.t, t.x + t.t, t.y + t.t);
+  for (const k of map.rocks) put({ kind: "rock", x: k.x, y: k.y, r: k.r }, k.x - k.r, k.y - k.r, k.x + k.r, k.y + k.r);
+  return map;
+}
+const NOTHING = [];
+const cellAt = (x, y) => (MAP && MAP.grid.get((Math.floor(x / 128) + 4) * 4096 + Math.floor(y / 128) + 4)) || NOTHING;
+const isOpen = (o) => o.kind === "crate" && crateBroken[o.i] === "x";
+/** Push a circle (a fighter) out of every obstacle and keep it on the island. */
+function pushOut(f) {
+  for (const o of cellAt(f.x, f.y)) {
+    if (isOpen(o)) continue;
+    if (o.r) {
+      const dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy), min = o.r + R;
+      if (d < min) { if (d < 0.01) f.x += min; else { f.x = o.x + dx / d * min; f.y = o.y + dy / d * min; } }
+    } else {
+      const cx = Math.max(o.x, Math.min(f.x, o.x + o.w)), cy = Math.max(o.y, Math.min(f.y, o.y + o.h)), dx = f.x - cx, dy = f.y - cy, d = Math.hypot(dx, dy);
+      if (d < R && d > 0.001) { f.x = cx + dx / d * R; f.y = cy + dy / d * R; }
+      else if (d <= 0.001) { // the center is inside the rect: leave by the nearest side
+        const l = f.x - o.x, r = o.x + o.w - f.x, t = f.y - o.y, b = o.y + o.h - f.y, m = Math.min(l, r, t, b);
+        if (m === l) f.x = o.x - R; else if (m === r) f.x = o.x + o.w + R; else if (m === t) f.y = o.y - R; else f.y = o.y + o.h + R;
+      }
+    }
+  }
+  const M = CONFIG.map;
+  f.x = Math.max(R, Math.min(M - R, f.x)); f.y = Math.max(R, Math.min(M - R, f.y));
+}
+/** The obstacle a bullet at (x, y) runs into, or null. */
+function solidAt(x, y) {
+  for (const o of cellAt(x, y)) {
+    if (isOpen(o)) continue;
+    if (o.r ? (x - o.x) ** 2 + (y - o.y) ** 2 < o.r * o.r : x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) return o;
+  }
+  return null;
+}
+/** True when nothing blocks a bullet flying straight from a to b. */
+function canSee(a, b) {
+  const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 18);
+  for (let i = 1; i < n; i++) if (solidAt(a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n)) return false;
+  return true;
+}
+/** True when a house wall stands between two points (for walking: walls are fattened by most of a fighter). */
+function wallBetween(ax, ay, bx, by) {
+  const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 14), pad = R * 0.7;
+  for (let i = 1; i < n; i++) {
+    const x = ax + (bx - ax) * i / n, y = ay + (by - ay) * i / n;
+    for (const o of cellAt(x, y)) if (o.kind === "wall" && x > o.x - pad && x < o.x + o.w + pad && y > o.y - pad && y < o.y + o.h + pad) return true;
+  }
+  return false;
+}
+const houseAt = (x, y) => (MAP ? MAP.houses.find((h) => x > h.x && x < h.x + h.w && y > h.y && y < h.y + h.h) : null) || null;
+
+// ── ZONE ────────────────────────────────────────────────────────────────────────────
+// match.zone = [[shrinkStartsAt, shrinkEndsAt, x, y, r], ...]: timestamps the host wrote when the match began.
+// Before the first shrink the circle covers the whole island.
+function makeZone(seed, t0) {
+  const rnd = mulberry32(seed ^ 0x5bd1e995), M = CONFIG.map, out = [];
+  let x = M / 2, y = M / 2, r = M * 0.75, t = t0;
+  for (const [wait, shrink, share] of CONFIG.zone) {
+    const nr = Math.round(M * share), a = rnd() * Math.PI * 2, d = rnd() * Math.max(0, r - nr) * 0.7, keep = Math.max(nr, 220);
+    const nx = Math.max(keep, Math.min(M - keep, x + Math.cos(a) * d)), ny = Math.max(keep, Math.min(M - keep, y + Math.sin(a) * d));
+    t += wait * 1000; const from = t; t += shrink * 1000;
+    out.push([from, t, Math.round(nx), Math.round(ny), nr]);
+    x = nx; y = ny; r = nr;
+  }
+  return out;
+}
+/** The circle at time t: where it is, where it's going (`next`), when that changes (`until`) and how much it hurts outside. */
+function zoneAt(m, t) {
+  const M = CONFIG.map, list = (m && m.zone) || [], dps = (i) => (CONFIG.zone[Math.max(0, Math.min(CONFIG.zone.length - 1, i))] || [0, 0, 0, 5])[3];
+  let x = M / 2, y = M / 2, r = M * 0.75;
+  for (let i = 0; i < list.length; i++) {
+    const [a, b, nx, ny, nr] = list[i];
+    if (t < a) return { x, y, r, next: { x: nx, y: ny, r: nr }, shrinking: false, until: a, dps: dps(i - 1) };
+    if (t < b) { const k = (t - a) / (b - a); return { x: x + (nx - x) * k, y: y + (ny - y) * k, r: r + (nr - r) * k, next: { x: nx, y: ny, r: nr }, shrinking: true, until: b, dps: dps(i) }; }
+    x = nx; y = ny; r = nr;
+  }
+  return { x, y, r, next: null, shrinking: false, until: 0, dps: dps(list.length - 1) };
+}
+const outside = (z, f) => Math.hypot(f.x - z.x, f.y - z.y) > z.r;
+
+// ── FIGHTERS ────────────────────────────────────────────────────────────────────────
+// A fighter (me or a bot): { id, name, color, x, y, a (aim), vx, vy, hp, ar (armor), guns ("fps…": what it
+// carries), w (weapon in hand), mag {p, s, r} (rounds loaded), ammo (spare rounds), med (medkits),
+// cd (seconds till it can fire), reloadUntil / healUntil (timestamps), dead }.
+function resetFighter(f) {
+  return Object.assign(f, { hp: CONFIG.hp, ar: 0, guns: "f", w: "f", mag: { p: 0, s: 0, r: 0 }, ammo: 0, med: 0, cd: 0, reloadUntil: 0, healUntil: 0, dead: 0, vx: 0, vy: 0, firedAt: -1e9, hurtAt: -1e9 });
+}
+const newFighter = (id, name, color) => resetFighter({ id, name, color, x: 0, y: 0, a: 0 });
+const owns = (f, k) => String(f.guns || "").includes(k);
+/** Would this fighter pick this loot up? (A gun you already carry still gives ammo.) */
+function wants(f, k) {
+  if (GUNS[k]) return !owns(f, k) || f.ammo < CONFIG.maxAmmo;
+  if (k === "a") return f.ammo < CONFIG.maxAmmo;
+  if (k === "v") return f.ar < 100;
+  if (k === "m") return f.med < CONFIG.maxMeds;
+  return false;
+}
+/** Put a piece of loot in a fighter's pockets. */
+function grant(f, k) {
+  if (GUNS[k]) {
+    if (!owns(f, k)) { f.guns += k; f.mag[k] = GUNS[k].mag; if (RANK[k] > RANK[f.w]) hold(f, k); }
+    f.ammo = Math.min(CONFIG.maxAmmo, f.ammo + CONFIG.gunAmmo);
+  } else if (k === "a") f.ammo = Math.min(CONFIG.maxAmmo, f.ammo + CONFIG.ammoBox);
+  else if (k === "v") f.ar = Math.min(100, f.ar + CONFIG.vestArmor);
+  else if (k === "m") f.med = Math.min(CONFIG.maxMeds, f.med + 1);
+}
+function hold(f, k) { if (!owns(f, k) || f.w === k) return; f.w = k; f.reloadUntil = 0; f.cd = Math.max(f.cd, 0.25); }
+function startReload(f, t) {
+  const g = GUNS[f.w];
+  if (!g.mag || f.reloadUntil || f.mag[f.w] >= g.mag || f.ammo <= 0) return;
+  f.reloadUntil = t + g.reload * 1000; f.healUntil = 0;
+}
+function startHeal(f, t) { if (f.med <= 0 || f.hp >= CONFIG.hp || f.healUntil) return; f.healUntil = t + CONFIG.medMs; f.reloadUntil = 0; }
+/** Finish a reload or a medkit when its time comes. */
+function stepTimers(f, t) {
+  if (f.reloadUntil && t >= f.reloadUntil) { const n = Math.max(0, Math.min(GUNS[f.w].mag - f.mag[f.w], f.ammo)); f.mag[f.w] += n; f.ammo -= n; f.reloadUntil = 0; }
+  if (f.healUntil && t >= f.healUntil) { f.hp = Math.min(CONFIG.hp, f.hp + CONFIG.medHeal); f.med--; f.healUntil = 0; }
+}
+/** Take damage: armor soaks part of it while it lasts. */
+function hurt(f, dmg) { const soak = Math.min(f.ar, dmg * CONFIG.armorSoak); f.ar -= soak; f.hp -= dmg - soak; }
+/** Pull the trigger. Flies the shot here and returns it as [x, y, a, w, seed] for the caller to send, or null. */
+function fire(f, t) {
+  const g = GUNS[f.w];
+  if (f.cd > 0 || f.healUntil || f.reloadUntil) return null;
+  if (g.mag) { if (f.mag[f.w] <= 0) { startReload(f, t); return null; } f.mag[f.w]--; }
+  f.cd = g.every * (f.bot ? CONFIG.botFireSlow : 1);
+  const reach = g.len ? R + g.len - 6 : R - 4, seed = 1 + Math.floor(Math.random() * 2147483646);
+  let x = Math.round(f.x + Math.cos(f.a) * reach), y = Math.round(f.y + Math.sin(f.a) * reach);
+  if (!canSee(f, { x, y })) { x = Math.round(f.x); y = Math.round(f.y); } // muzzle through a wall: the shot starts at you and hits it
+  const a = +f.a.toFixed(3);
+  addShot(f.id, x, y, a, f.w, seed);
+  f.firedAt = performance.now();
+  return [x, y, a, f.w, seed];
+}
+
+// ── BULLETS ─────────────────────────────────────────────────────────────────────────
+const bullets = [], fx = { sparks: [], rings: [], texts: [], marks: [] };
+function addShot(owner, x, y, a, w, seed) {
+  const g = GUNS[w] || GUNS.p, rnd = mulberry32(seed | 0);
+  for (let i = 0; i < g.pellets; i++) {
+    const aa = a + (rnd() - 0.5) * 2 * g.spread, sp = g.speed * (g.pellets > 1 ? 0.85 + rnd() * 0.3 : 1);
+    bullets.push({ owner, w, x, y, vx: Math.cos(aa) * sp, vy: Math.sin(aa) * sp, life: g.range / g.speed });
+  }
+  const v = views.get(owner); if (v) v.firedAt = performance.now();
+  const near = Math.hypot(x - cam.x, y - cam.y);
+  if (owner !== me.id && near < 900) sfx(w === "f" ? "punch" : "shot" + w, Math.max(0.15, 1 - near / 900));
+}
+/** Move every bullet. Obstacles stop them. Who they hurt is decided by the one they hit (the host, for bots and crates). */
+function stepBullets(dt) {
+  const all = fighters().filter((f) => !f.dead), M = CONFIG.map;
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i], n = Math.max(1, Math.ceil(Math.hypot(b.vx, b.vy) * dt / 14)); // small sub-steps: a fast bullet can't skip a wall
+    let gone = (b.life -= dt) <= 0;
+    for (let s = 0; s < n && !gone; s++) {
+      b.x += b.vx * dt / n; b.y += b.vy * dt / n;
+      const o = solidAt(b.x, b.y);
+      if (o) { gone = true; spark(b.x, b.y, o.kind === "crate" ? "#e0b072" : o.kind === "tree" ? "#7a5530" : "#d5d8dd", 4); if (o.kind === "crate" && host.acting) hitCrate(o.i, b.w); break; }
+      if (b.x < 0 || b.y < 0 || b.x > M || b.y > M) { gone = true; break; }
+      for (const f of all) {
+        if (f.id === b.owner || (b.x - f.x) ** 2 + (b.y - f.y) ** 2 > (R + 3) ** 2) continue;
+        gone = true; spark(b.x, b.y, "#ff4d5e", 5);
+        if (f.mine) takeHit(b.owner, b.w);                       // me: my own fact
+        else if (f.bot && host.acting) hitBot(f, b.owner, b.w);  // a bot: the host decides
+        else if (b.owner === me.id) sfx("tick"); // someone else: just a spark (and a tick for my own shot)
+        break;
+      }
+    }
+    if (gone) bullets.splice(i, 1);
+  }
+}
+
+// ── MATCH (HOST) ────────────────────────────────────────────────────────────────────
+const host = { acting: false, last: null, world: null, tally: null, bots: new Map(), inMatch: new Set(), allOutAt: 0, again: false,
+  lastBots: 0, lastWorld: 0, lastCheck: 0, worldDirty: false, tallyDirty: false, shots: [] };
+const clone = (o) => JSON.parse(JSON.stringify(o));
+/** The match as state has it, or the host's own newer write that hasn't come back yet. `v` only goes up. */
+function match() {
+  const m = parseOnce("match", S.shared.match, null);
+  return host.last && host.acting && (!m || host.last.v > m.v) ? host.last : m;
+}
+function writeMatch(m) { m = { ...m, v: (match()?.v ?? 0) + 1 }; host.last = m; net.setShared("match", JSON.stringify(m)); return m; }
+/** world / tally for the current match: the host's live copy, or what state has. */
+function world() { const m = match(), w = host.acting && host.world ? host.world : parseOnce("world", S.shared.world, null); return w && m && w.m === m.id ? w : null; }
+function tally() { const m = match(), l = host.acting && host.tally ? host.tally : parseOnce("tally", S.shared.tally, null); return l && m && l.m === m.id && l.e ? l : null; }
+const freshWorld = (id, map) => ({ m: id, v: 1, t: ".".repeat(map.loot.length), c: ".".repeat(map.crates.length), hp: {}, d: [], g: [], nid: 5000 });
+const packBot = (b) => [b.id, b.name, b.color, Math.round(b.x), Math.round(b.y), +b.a.toFixed(2), Math.round(b.hp), Math.round(b.ar), b.w, b.dead, b.guns, b.ammo, b.med, Math.round(b.vx), Math.round(b.vy), b.healUntil ? 1 : 0];
+const unpackBot = (a) => Array.isArray(a) && typeof a[3] === "number" ? { id: String(a[0]), name: String(a[1]), color: safeColor(a[2]), x: a[3], y: a[4], a: a[5], hp: a[6], ar: a[7],
+  w: GUNS[a[8]] ? a[8] : "f", dead: a[9] ? 1 : 0, guns: String(a[10] || "f"), ammo: a[11] || 0, med: a[12] || 0, vx: a[13] || 0, vy: a[14] || 0, healing: a[15], bot: true } : null;
+let botsMemo = { raw: null, list: [] };
+function sharedBots() { if (S.shared.bots !== botsMemo.raw) botsMemo = { raw: S.shared.bots, list: parse(S.shared.bots, []).map(unpackBot).filter(Boolean) }; return botsMemo.list; }
+const botList = () => (host.acting ? [...host.bots.values()] : sharedBots());
+
+/** Just became host: take over the match, the world, the tally and the bots exactly as state has them. */
+function adopt() {
+  host.acting = true; host.last = null; host.bots.clear(); host.inMatch.clear(); host.allOutAt = Date.now();
+  const m = match();
+  if (!m) { host.world = host.tally = null; return; }
+  const map = mapFor(m.seed), w = parse(S.shared.world, null), l = parse(S.shared.tally, null);
+  host.world = w && w.m === m.id ? w : freshWorld(m.id, map);
+  host.tally = l && l.m === m.id && l.e ? l : { m: m.id, v: 1, e: {} };
+  for (const s of sharedBots()) {
+    const b = Object.assign(newFighter(s.id, s.name, s.color), { x: s.x, y: s.y, a: s.a, hp: s.hp, ar: s.ar, guns: s.guns, w: s.w, dead: s.dead, ammo: s.ammo, med: s.med, bot: true });
+    for (const k of "psr") if (owns(b, k)) b.mag[k] = GUNS[k].mag;
+    brainFor(b); host.bots.set(b.id, b);
+  }
+  for (const [id, p] of Object.entries(S.entities.players || {})) { // everyone whose `p` says they're in, live or not: a frozen old host gets counted out
+    const q = id === me.id ? { m: me.inMatch ? me.matchId : -1, d: me.dead } : parseOnce("p:" + id, p.p, null);
+    if (q && q.m === m.id && !q.d) host.inMatch.add(id);
+  }
+}
+/** A new match: a new island from a new seed, the circle's schedule, landing spots, fresh bots. */
+function startMatch(id) {
+  const t = Date.now(), seed = 1 + Math.floor(Math.random() * 2147483646), map = mapFor(seed);
+  const people = livePlayers(), rnd = mulberry32(seed + 7), order = map.spots.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  const drop = people.map((pid, i) => [pid, order[i % order.length]]);
+  const used = new Set(people.map((pid) => (pid === me.id ? me.color : S.entities.players[pid]?.c)));
+  host.bots.clear();
+  const nBots = Math.max(0, Math.min(20, CONFIG.seats - people.length));
+  for (let j = 0; j < nBots; j++) {
+    const s = map.spots[order[(people.length + j) % order.length]], color = COLORS.find((c) => !used.has(c)) || COLORS[j % COLORS.length];
+    used.add(color);
+    const b = Object.assign(newFighter("b" + j, BOT_NAMES[j % BOT_NAMES.length], color), { bot: true, x: s.x + (j >= order.length ? 40 : 0), y: s.y });
+    if (ATTRACT) armForAttract(b);
+    brainFor(b); host.bots.set(b.id, b);
+  }
+  host.world = freshWorld(id, map); host.tally = { m: id, v: 1, e: {} };
+  net.setShared("world", JSON.stringify(host.world)); net.setShared("tally", JSON.stringify(host.tally)); // the new world first, then the match that points at it
+  host.worldDirty = host.tallyDirty = false; host.inMatch.clear(); host.allOutAt = t; host.lastBots = 0;
+  return writeMatch({ id, phase: "play", seed, t0: t, zone: makeZone(seed, t), drop, endsAt: 0, winner: null, wname: "" });
+}
+/** The preview starts everyone armed, so the fighting starts at once. */
+function armForAttract(f) { const k = ["r", "s", "p", "r"][Math.floor(Math.random() * 4)]; grant(f, k); f.ammo = 90; f.ar = Math.random() < 0.5 ? 50 : 0; f.med = 1; }
+/** Who is still in: fighters in this match who aren't down and aren't on the tally yet. */
+function aliveIds() {
+  const tl = tally();
+  return fighters().filter((f) => !f.dead && !(tl && tl.e[f.id])).map((f) => f.id);
+}
+/** Someone is out (host only): their place, who got them, and their guns dropped where they fell. */
+function recordDeath(id, by, name, at) {
+  const m = match(), tl = host.tally;
+  if (!m || m.phase !== "play" || !tl || tl.m !== m.id || tl.e[id]) return;
+  const place = aliveIds().filter((x) => x !== id).length + 1;
+  tl.e[id] = [place, String(by || "zone"), String(name || "Someone").slice(0, 14)]; tl.v++; host.tallyDirty = true;
+  if (at && typeof at.x === "number") dropLoot(at.x, at.y, at.guns);
+}
+function dropLoot(x, y, guns) {
+  const w = host.world; if (!w) return;
+  [...String(guns || "")].filter((k) => k !== "f" && GUNS[k]).concat("a").forEach((k, i) => {
+    const a = i * 2.3 + Math.random(), p = { x: x + Math.cos(a) * 32, y: y + Math.sin(a) * 32 };
+    pushOut(p);
+    w.d.push([w.nid++, k, Math.round(p.x), Math.round(p.y)]);
+  });
+  while (w.d.length > 40) w.d.shift();
+  w.v++; host.worldDirty = true;
+}
+/** A "take" reached the host: the first claim on an item that's still there gets it. */
+function applyTake(pid, id) {
+  const w = host.world, m = match(), it = itemById(id), f = fighterById(pid);
+  if (!w || !m || m.phase !== "play" || !it || !f || f.dead) return;
+  if (Math.hypot(f.x - it.x, f.y - it.y) > CONFIG.pickup + 150) return; // slack: the claim can arrive before the claimer's latest position
+  if (id < 5000) w.t = w.t.slice(0, id) + "x" + w.t.slice(id + 1); else w.d = w.d.filter((d) => d[0] !== id);
+  if (f.bot) grant(f, it.k); else { w.g.push([id, pid, it.k]); while (w.g.length > 12) w.g.shift(); }
+  w.v++; host.worldDirty = true;
+}
+/** A bullet (or a fist) hit a crate on the host's screen. */
+function hitCrate(i, wpn) {
+  const w = host.world; if (!w || w.c[i] === "x") return;
+  const hp = (w.hp[i] ?? CONFIG.crateHp) - (GUNS[wpn] ? GUNS[wpn].dmg : 10);
+  if (hp > 0) w.hp[i] = hp; else { delete w.hp[i]; w.c = w.c.slice(0, i) + "x" + w.c.slice(i + 1); crateBroken = w.c; }
+  w.v++; host.worldDirty = true;
+}
+/** Someone's bullet hit a bot (on the host's screen). */
+function hitBot(b, by, wpn) {
+  if (b.dead || match()?.phase !== "play") return;
+  hurt(b, GUNS[wpn] ? GUNS[wpn].dmg : 0); b.hurtAt = performance.now(); b.hitBy = by; b.hitAt = Date.now();
+  if (b.hp <= 0) killBot(b, by, wpn);
+}
+function killBot(b, by, wpn) {
+  Object.assign(b, { hp: 0, dead: 1, healUntil: 0, reloadUntil: 0 });
+  const msg = { v: b.id, by, w: wpn, x: Math.round(b.x), y: Math.round(b.y), g: b.guns, m: match().id };
+  net.send("down", msg); onDown(msg);
+}
+/** Catch what events missed: people whose `p` says they're down, and people who left mid-match. */
+function reconcile(m) {
+  const tl = host.tally, live = new Set(livePlayers());
+  for (const f of fighters()) {
+    if (f.bot) continue;
+    if (f.dead) { if (!tl.e[f.id]) recordDeath(f.id, f.by, f.name, { x: f.x, y: f.y, guns: f.guns }); }
+    else host.inMatch.add(f.id);
+  }
+  for (const id of host.inMatch) if (!live.has(id)) { host.inMatch.delete(id); if (!tl.e[id]) recordDeath(id, "left", nameOf(id), null); }
+}
+/** Bots never wear a person's color. */
+function fitBotColors() {
+  const people = new Set(Object.entries(S.entities.players || {}).map(([id, p]) => (id === me.id ? me.color : p.c)));
+  for (const b of host.bots.values()) if (people.has(b.color)) { const used = new Set([...people, ...botList().map((o) => o.color)]); b.color = COLORS.find((c) => !used.has(c)) || b.color; }
+}
+
+function hostTick(dt, now) {
+  if (!host.acting) adopt();
+  const t = Date.now();
+  let m = match();
+  if (!m) m = startMatch(1);
+  if (!host.world || host.world.m !== m.id) { host.world = freshWorld(m.id, mapFor(m.seed)); host.tally = { m: m.id, v: 1, e: {} }; }
+  const sw = parseOnce("world", S.shared.world, null), sl = parseOnce("tally", S.shared.tally, null); // another host wrote something newer: take it
+  if (sw && sw.m === m.id && sw.v > host.world.v) host.world = clone(sw);
+  if (sl && sl.m === m.id && sl.e && sl.v > host.tally.v) host.tally = clone(sl);
+  crateBroken = host.world.c;
+  if (m.phase === "play") {
+    const all = fighters(), z = zoneAt(m, t);
+    for (const b of host.bots.values()) {
+      stepBot(b, dt, t, all, z);
+      if (!b.dead && outside(z, b)) { b.hp -= z.dps * dt; if (b.hp <= 0) killBot(b, "zone", "z"); }
+    }
+    if (now - host.lastCheck > 250) { host.lastCheck = now; reconcile(m); fitBotColors(); }
+    const alive = fighters().filter((f) => !f.dead && !host.tally.e[f.id]);
+    if (t - m.t0 > 3000 && alive.length <= 1) {
+      const w = alive[0] ? alive[0].id : null;
+      m = writeMatch({ ...m, phase: "over", winner: w, wname: w ? nameOf(w) : "", endsAt: t + CONFIG.resultsMs });
+    } else if (alive.some((f) => !f.bot) || t - m.t0 < 3000) host.allOutAt = t;
+    else if (host.again || t - host.allOutAt > CONFIG.watchMs) m = startMatch(m.id + 1); // nobody left to watch for: next match
+  } else if (m.phase === "over" && (t >= m.endsAt || host.again)) m = startMatch(m.id + 1);
+  host.again = false;
+  if (now - host.lastBots > 100) { // ~10/s: every bot in one message, and their shots in another
+    host.lastBots = now;
+    net.setShared("bots", JSON.stringify(botList().map(packBot)));
+    if (host.shots.length) { net.send("shots", { list: host.shots.splice(0, 40) }); host.shots.length = 0; }
+  }
+  if (host.worldDirty && now - host.lastWorld > 200) {
+    host.lastWorld = now; host.worldDirty = false; host.world.v = vAbove(host.world, "world");
+    let s = JSON.stringify(host.world);
+    while (s.length > 2000 && host.world.d.length) { host.world.d.shift(); s = JSON.stringify(host.world); } // a field holds 2048 characters
+    net.setShared("world", s);
+  }
+  if (host.tallyDirty) { host.tallyDirty = false; host.tally.v = vAbove(host.tally, "tally"); net.setShared("tally", JSON.stringify(host.tally)); }
+}
+/** The `v` to write for my copy of world/tally: never at or below what state has for this match (a stale copy must not look newer). */
+function vAbove(o, key) { const s = parseOnce(key, S.shared[key], null); return s && s.m === o.m && s.v >= o.v ? s.v + 1 : o.v; }
+
+// ── BOT BRAIN ───────────────────────────────────────────────────────────────────────
+// A bot loots until it has a gun, fights whoever it can see, heals when it's safe, uses doors,
+// and heads for the next circle before it closes. It aims a little late and a little wide.
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function brainFor(b) {
+  Object.assign(b, { thinkAt: 0, foe: null, item: null, wp: null, seenAt: 0, hitBy: null, hitAt: 0, moodUntil: 0, hunting: false, flee: null, detour: 0, detourUntil: 0, checkAt: 0, lastX: b.x, lastY: b.y, seed: Math.random() * 9, nerve: 0.65 + Math.random() * 0.45 });
+}
+/** Is there loot worth walking to? Higher = better. */
+function lootValue(b, k) {
+  if (!wants(b, k)) return 0;
+  if (GUNS[k]) return owns(b, k) ? (b.ammo < 40 ? 1 : 0) : b.guns === "f" ? 8 : RANK[k] > Math.max(...[...b.guns].map((g) => RANK[g])) ? 4 : 1;
+  if (k === "a") return b.ammo < 60 ? 2.5 : 0.5;
+  if (k === "v") return 2.5;
+  return b.med < 2 ? 1.5 : 0.5;
+}
+function chooseWeapon(b, d) {
+  const ok = (k) => owns(b, k) && (b.mag[k] > 0 || b.ammo > 0);
+  hold(b, d < 230 && ok("s") ? "s" : ok("r") ? "r" : ok("p") ? "p" : ok("s") ? "s" : "f");
+}
+/** Twice a second or so: pick loot, pick a foe, pick a weapon, maybe heal or reload. */
+function think(b, t, all, list, m) {
+  b.thinkAt = t + 300 + Math.random() * 250;
+  let best = null, bv = 0;
+  for (const it of list) { const v = lootValue(b, it.k), d = dist(it, b); if (v && d < 700 && v / (d + 120) > bv) { bv = v / (d + 120); best = it; } }
+  b.item = best ? best.id : null;
+  // a foe: whoever just hit it, or the one it's already fighting, else (when it's in the mood to hunt) the nearest one
+  // it can see. Early in the match, and with bare fists, it would rather go find loot.
+  if (t > b.moodUntil) { b.moodUntil = t + 5000 + Math.random() * 5000; b.hunting = Math.random() < Math.min(1, 0.2 + (t - m.t0) / 180000) * b.nerve * 1.2; }
+  const armed = [..."psr"].some((k) => owns(b, k) && (b.mag[k] > 0 || b.ammo > 0)), calm = t - m.t0 < CONFIG.botCalmMs;
+  const near = (id) => all.find((f) => f.id === id && !f.dead && dist(f, b) < CONFIG.botRange && canSee(b, f));
+  const hitter = (t - b.hitAt < 3000 && near(b.hitBy)) || (armed && b.foe && near(b.foe)) || null;
+  let foe = hitter, fd = hitter ? dist(hitter, b) : !armed ? (best ? 60 : 120) : calm || !b.hunting ? 120 : CONFIG.botRange * b.nerve;
+  if (!hitter) for (const f of all) { if (f.id === b.id || f.dead) continue; const d = dist(f, b); if (d < fd && canSee(b, f)) { fd = d; foe = f; } }
+  if (foe && foe.id !== b.foe) b.seenAt = t;
+  b.foe = foe ? foe.id : null;
+  b.flee = foe && b.hp < 40 && b.nerve < 0.95 ? foe.id : null; // hurt and timid: run, heal, come back later
+  if (b.flee) { b.hunting = false; b.moodUntil = t + 8000; }
+  chooseWeapon(b, foe ? fd : 400);
+  if (!foe && b.hp < 60 && b.med > 0) startHeal(b, t);
+  if (b.w !== "f" && b.mag[b.w] < (foe ? 1 : GUNS[b.w].mag) && b.ammo > 0) startReload(b, t);
+}
+/** The next point to walk to on the way to (gx, gy): straight there, through a door, or around a house. */
+function route(b, gx, gy) {
+  if (!wallBetween(b.x, b.y, gx, gy)) return { x: gx, y: gy };
+  const hb = houseAt(b.x, b.y), hg = houseAt(gx, gy);
+  let h = hb || hg;
+  if (!h) for (let i = 1; i < 30 && !h; i++) h = houseAt(b.x + (gx - b.x) * i / 30, b.y + (gy - b.y) * i / 30);
+  if (!h) return { x: gx, y: gy };
+  if (h === hb || h === hg) { // through the door that makes the shortest trip
+    let d = h.doors[0], best = Infinity;
+    for (const o of h.doors) { const c = Math.hypot(o.x - b.x, o.y - b.y) + Math.hypot(o.x - gx, o.y - gy); if (c < best) { best = c; d = o; } }
+    const inside = h === hb, near = inside ? d.in : d.out, far = inside ? d.out : d.in;
+    return Math.hypot(near.x - b.x, near.y - b.y) > 22 && wallBetween(b.x, b.y, far.x, far.y) ? near : far;
+  }
+  let pick = { x: gx, y: gy }, best = Infinity; // around the house, by its quickest corner
+  for (const [cx, cy] of [[h.x - 50, h.y - 50], [h.x + h.w + 50, h.y - 50], [h.x - 50, h.y + h.h + 50], [h.x + h.w + 50, h.y + h.h + 50]]) {
+    const c = Math.hypot(cx - b.x, cy - b.y) + Math.hypot(cx - gx, cy - gy);
+    if (c < best && !wallBetween(b.x, b.y, cx, cy)) { best = c; pick = { x: cx, y: cy }; }
+  }
+  return pick;
+}
+/** Somewhere a short walk away that's still inside the circle (bots stay spread out until the circle herds them). */
+function wanderPoint(b, z) {
+  const M = CONFIG.map;
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2, d = 150 + Math.random() * 250;
+    const p = { x: Math.max(80, Math.min(M - 80, b.x + Math.cos(a) * d)), y: Math.max(80, Math.min(M - 80, b.y + Math.sin(a) * d)) };
+    if (!solidAt(p.x, p.y) && Math.hypot(p.x - z.x, p.y - z.y) < z.r * 0.8) return p;
+  }
+  return { x: b.x + (z.x - b.x) * 0.3, y: b.y + (z.y - b.y) * 0.3 };
+}
+function stepBot(b, dt, t, all, z) {
+  if (b.dead) return;
+  stepTimers(b, t); b.cd -= dt;
+  const list = items();
+  if (t > b.thinkAt) think(b, t, all, list, match());
+  const foe = b.foe ? all.find((f) => f.id === b.foe && !f.dead) : null;
+  const safe = z.next && (z.shrinking || z.until - t < 12000) ? z.next : z;      // where the circle will be soon
+  const run = Math.hypot(b.x - safe.x, b.y - safe.y) > Math.max(0, safe.r * 0.85 - 30);
+  let goal = null, mx = 0, my = 0;
+  if (run) goal = { x: safe.x, y: safe.y };
+  else if (!foe && b.item !== null) { goal = list.find((i) => i.id === b.item) || null; if (!goal) b.item = null; }
+  if (!goal && !foe) { if (!b.wp || dist(b, b.wp) < 50 || outside(z, b.wp)) b.wp = wanderPoint(b, z); goal = b.wp; }
+  if (foe && !run) { // fight: keep the weapon's distance and strafe
+    const d = dist(foe, b), ang = Math.atan2(foe.y - b.y, foe.x - b.x), side = Math.sin(t / 700 + b.seed) > 0 ? 1 : -1;
+    const close = b.flee ? -1.3 : d > KEEP[b.w] + 70 ? 1 : d < KEEP[b.w] - 70 ? -0.7 : 0;
+    mx = Math.cos(ang) * close + Math.cos(ang + Math.PI / 2) * side * 0.7; my = Math.sin(ang) * close + Math.sin(ang + Math.PI / 2) * side * 0.7;
+  } else if (goal) { const p = route(b, goal.x, goal.y); mx = p.x - b.x; my = p.y - b.y; }
+  if (t < b.detourUntil) { mx = Math.cos(b.detour); my = Math.sin(b.detour); }
+  if (foe) { // aim a little behind where it's going, plus a wobble
+    const d = dist(foe, b), lead = d / GUNS[b.w].speed * 0.8;
+    const aimAt = Math.atan2(foe.y + (foe.vy || 0) * lead - b.y, foe.x + (foe.vx || 0) * lead - b.x) + Math.sin(t / 260 + b.seed) * CONFIG.botAim * (0.6 + d / 400); // worse from further away
+    const diff = Math.atan2(Math.sin(aimAt - b.a), Math.cos(aimAt - b.a));
+    b.a += Math.max(-8 * dt, Math.min(8 * dt, diff));
+    if (Math.abs(diff) < 0.25 && t - b.seenAt > CONFIG.botReact * 1000 && d < GUNS[b.w].range + R && !b.healUntil) { const s = fire(b, t); if (s) host.shots.push([b.id, ...s]); }
+  } else if (mx || my) { const diff = Math.atan2(Math.sin(Math.atan2(my, mx) - b.a), Math.cos(Math.atan2(my, mx) - b.a)); b.a += Math.max(-6 * dt, Math.min(6 * dt, diff)); }
+  const len = Math.hypot(mx, my), sp = CONFIG.speed * 0.88 * (b.healUntil ? CONFIG.healSlow : 1), k = Math.min(1, dt * 10);
+  b.vx += ((len > 0.01 ? mx / len : 0) * sp - b.vx) * k; b.vy += ((len > 0.01 ? my / len : 0) * sp - b.vy) * k;
+  b.x += b.vx * dt; b.y += b.vy * dt;
+  pushOut(b);
+  if (t > b.checkAt) { // stuck on something? try a sideways detour for a moment
+    if (len > 0.01 && Math.hypot(b.x - b.lastX, b.y - b.lastY) < sp * 0.5 * 0.25) { b.detour = Math.atan2(my, mx) + (Math.random() < 0.5 ? 1 : -1) * (1.3 + Math.random()); b.detourUntil = t + 600; b.wp = null; }
+    b.lastX = b.x; b.lastY = b.y; b.checkAt = t + 500;
+  }
+  for (const it of list) if (Math.hypot(it.x - b.x, it.y - b.y) < CONFIG.pickup && wants(b, it.k)) { applyTake(b.id, it.id); break; }
+}
+
+// ── ME ──────────────────────────────────────────────────────────────────────────────
+const myName = ((() => { try { return localStorage.getItem("mpa-name") || ""; } catch { return ""; } })() ||
+  ["Swift", "Neon", "Lucky", "Turbo", "Pixel", "Rogue"][Math.floor(Math.random() * 6)] + " " + ["Fox", "Hawk", "Lynx", "Wolf", "Cobra", "Raven"][Math.floor(Math.random() * 6)]).slice(0, 16);
+const me = Object.assign(newFighter("", myName, COLORS[0]), { mine: true, matchId: -1, inMatch: false, by: "", lastSend: 0, got: new Set(), pending: new Map(),
+  watch: null, cardOpen: false, submittedFor: -1, landedAt: 0, hitBy: null, hitAt: 0 });
+const input = { mx: 0, my: 0, fire: false };
+
+/** A new match id: reset everything on this screen, then land (or watch, if it started too long ago). */
+function onNewMatch(m) {
+  me.matchId = m.id; bullets.length = 0; feed.length = 0; views.clear(); me.got.clear(); me.pending.clear();
+  for (const k in fx) fx[k].length = 0;
+  resetFighter(me); Object.assign(me, { by: "", watch: null, cardOpen: false });
+  const map = mapFor(m.seed), slot = (m.drop || []).find(([id]) => id === me.id);
+  me.inMatch = !!slot || (m.phase === "play" && Date.now() < m.t0 + CONFIG.lateJoinMs);
+  if (me.inMatch) {
+    const s = slot ? map.spots[slot[1]] || map.spots[0] : freeSpot(map);
+    me.x = s.x; me.y = s.y; me.landedAt = performance.now(); cam.x = me.x; cam.y = me.y;
+    if (ATTRACT) { armForAttract(me); brainFor(me); Object.assign(me, { ar: 100, med: 3, nerve: 1.1 }); } // the preview's star lasts a while
+  }
+  prevCrates = "";
+  $("over").hidden = true;
+  publish(true);
+}
+function freeSpot(map) {
+  let best = map.spots[0], bd = -1;
+  for (const s of map.spots) { const d = Math.min(9999, ...fighters().filter((f) => !f.dead && f !== me).map((f) => dist(f, s))) + Math.random() * 100; if (d > bd) { bd = d; best = s; } }
+  return best;
+}
+/** A bullet from `by` touched me on MY screen: I take the damage, and say so if it was the last of me. */
+function takeHit(by, wpn) {
+  if (me.dead || !me.inMatch || match()?.phase !== "play") return;
+  hurt(me, GUNS[wpn] ? GUNS[wpn].dmg : 0); me.hurtAt = performance.now(); me.hitBy = by; me.hitAt = Date.now(); sfx("hurt");
+  if (me.hp <= 0) die(by, wpn);
+  publish(true);
+}
+function die(by, wpn) {
+  Object.assign(me, { hp: 0, dead: 1, by: String(by || "zone"), healUntil: 0, reloadUntil: 0, watch: by && by !== "zone" ? by : null, cardOpen: true });
+  const msg = { v: me.id, by: me.by, w: wpn, x: Math.round(me.x), y: Math.round(me.y), g: me.guns, m: me.matchId };
+  net.send("down", msg); onDown(msg);
+  publish(true);
+}
+/** Someone is down: a kill-feed line and a burst for everyone; the host records it. */
+function onDown(msg) {
+  const m = match();
+  if (!msg || !msg.v || !m || msg.m !== m.id) return;
+  const v = fighterById(msg.v), k = fighterById(msg.by);
+  feed.unshift({ by: msg.by, v: msg.v, w: msg.w, byName: nameOf(msg.by), vName: nameOf(msg.v), byColor: k ? k.color : "#fff", vColor: v ? v.color : "#fff", at: performance.now() });
+  feed.length = Math.min(feed.length, 5);
+  const x = typeof msg.x === "number" ? msg.x : v && v.x, y = typeof msg.y === "number" ? msg.y : v && v.y;
+  if (typeof x === "number") { explode(x, y, v ? v.color : "#fff"); fx.marks.push({ x, y }); }
+  if (msg.by === me.id && msg.v !== me.id) { sfx("kill"); toast(`You took out ${nameOf(msg.v)}`); }
+  if (me.watch === msg.v && k && !k.dead) me.watch = msg.by; // follow whoever got the one you were watching
+  if (host.acting) recordDeath(msg.v, msg.by, nameOf(msg.v), { x, y, guns: msg.g });
+}
+/** Pickups the host gave me (world.g): into my pockets, once each. */
+function applyGrants() {
+  const w = world();
+  if (!w || w.m !== me.matchId || !me.inMatch || me.dead) return;
+  for (const [id, pid, k] of w.g || []) if (pid === me.id && !me.got.has(id) && LOOT[k]) {
+    me.got.add(id); grant(me, k); sfx("pick");
+    fx.texts.push({ text: "+ " + LOOT[k].name, x: me.x, y: me.y - 34, color: LOOT[k].color, life: 1.1 });
+  }
+}
+/** Standing on loot I want: claim it (the host decides who gets it). */
+function claimLoot(t) {
+  for (const it of items()) {
+    if (Math.hypot(it.x - me.x, it.y - me.y) > CONFIG.pickup || !wants(me, it.k)) continue;
+    const p = me.pending.get(it.id);
+    if (p && t - p < 900) continue;
+    me.pending.set(it.id, t);
+    if (host.acting) applyTake(me.id, it.id); else net.send("take", { id: it.id });
+  }
+}
+function myTick(dt, m) {
+  const t = Date.now(), now = performance.now();
+  if (me.matchId !== m.id) onNewMatch(m);
+  applyGrants();
+  const tl = tally();
+  if (me.inMatch && !me.dead && tl && tl.e[me.id]) Object.assign(me, { dead: 1, by: tl.e[me.id][1], cardOpen: true }); // the host counted me out (my tab froze): accept it
+  if (!me.inMatch || me.dead) { publish(false); return; }
+  const z = zoneAt(m, t);
+  if (m.phase === "play" && outside(z, me)) { me.hp -= z.dps * dt; me.zoneAt = now; if (me.hp <= 0) { die("zone", "z"); return; } }
+  if (ATTRACT) { stepBot(me, dt, t, fighters(), z); publish(false); return; } // the preview plays you with the bot brain
+  stepTimers(me, t); me.cd -= dt;
+  const len = Math.hypot(input.mx, input.my), k = len > 1 ? 1 / len : 1, sp = CONFIG.speed * (me.healUntil ? CONFIG.healSlow : 1);
+  me.vx = input.mx * k * sp; me.vy = input.my * k * sp;
+  me.x += me.vx * dt; me.y += me.vy * dt; pushOut(me);
+  if (input.fire && m.phase === "play") {
+    if (me.healUntil) me.healUntil = 0; // shooting cancels a medkit
+    else { const s = fire(me, t); if (s) { net.send("shot", { x: s[0], y: s[1], a: s[2], w: s[3], s: s[4] }); sfx(me.w === "f" ? "punch" : "shot" + me.w, 1); if (me.w !== "f") cam.shake = Math.max(cam.shake, me.w === "s" ? 7 : 2.5); } }
+  }
+  if (m.phase === "play") claimLoot(t);
+  publish(false);
+}
+/** Two people in one color: the one with the higher sessionId picks a color no person or bot has. */
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId);
+  const clash = others.some(([id, p]) => p.c === me.color && id < net.sessionId) || (!host.acting && botList().some((b) => b.color === me.color)); // (the host recolors its bots instead)
+  if (!clash) return;
+  const taken = new Set([...others.map(([, p]) => p.c), ...botList().map((b) => b.color)]), free = COLORS.find((c) => !taken.has(c));
+  if (free) { me.color = free; net.me.set("c", free); }
+}
+function publish(force) {
+  const now = performance.now();
+  if (!force && now - me.lastSend < 80) return; // ~12/s
+  me.lastSend = now;
+  net.me.set("p", JSON.stringify({ x: Math.round(me.x), y: Math.round(me.y), a: +me.a.toFixed(2), hp: Math.max(0, Math.round(me.hp)), ar: Math.round(me.ar), w: me.w, g: me.guns,
+    d: me.dead ? 1 : 0, by: me.by, m: me.inMatch ? me.matchId : -1, vx: Math.round(me.vx), vy: Math.round(me.vy), h: me.healUntil ? 1 : 0 }));
+}
+
+// ── OTHERS ──────────────────────────────────────────────────────────────────────────
+const views = new Map();      // id -> someone else (a person, or a bot on a non-host screen), eased toward its snapshots
+const knownNames = new Map(); // id -> name, so the feed and results can name someone who has left
+let FIGHTERS = [];            // everyone in this match, worked out once a frame (see refreshFighters)
+function syncViews(dt) {
+  const k = 1 - Math.pow(0.0004, dt), seen = new Set(), live = new Set(livePlayers()), now = performance.now();
+  const add = (id, q) => {
+    if (!q || typeof q.x !== "number") return;
+    seen.add(id);
+    let v = views.get(id);
+    if (!v) { v = { x: q.x, y: q.y, a: q.a || 0, hp: q.hp, firedAt: -1e9, hurtAt: -1e9 }; views.set(id, v); }
+    if (Math.hypot(q.x - v.x, q.y - v.y) > 300) { v.x = q.x; v.y = q.y; } // landed somewhere new: no gliding across the map
+    if (q.hp < v.hp) v.hurtAt = now;
+    v.hp = q.hp;
+    const tx = q.x + (q.vx || 0) * 0.06, ty = q.y + (q.vy || 0) * 0.06; // a touch ahead: snapshots are ~100ms old
+    v.x += (tx - v.x) * k; v.y += (ty - v.y) * k; v.a += Math.atan2(Math.sin(q.a - v.a), Math.cos(q.a - v.a)) * Math.min(1, k * 1.5);
+  };
+  for (const [id, p] of Object.entries(S.entities.players || {})) if (id !== net.sessionId && live.has(id)) add(id, parseOnce("p:" + id, p.p, null));
+  if (!host.acting) for (const b of sharedBots()) add(b.id, b);
+  for (const id of views.keys()) if (!seen.has(id)) views.delete(id);
+}
+/** Everyone in the current match (people with a live heartbeat, bots, me), positions as this screen shows them. */
+function refreshFighters() {
+  const m = match(), out = [];
+  if (m) {
+    for (const id of livePlayers()) {
+      if (id === me.id) continue;
+      const p = S.entities.players[id], q = parseOnce("p:" + id, p && p.p, null), v = views.get(id);
+      if (p && p.n) knownNames.set(id, String(p.n));
+      if (!q || q.m !== m.id) continue;
+      out.push({ id, name: String(p.n || "Player"), color: safeColor(p.c), x: v ? v.x : q.x, y: v ? v.y : q.y, a: v ? v.a : q.a || 0, vx: q.vx, vy: q.vy,
+        hp: q.hp, ar: q.ar || 0, w: GUNS[q.w] ? q.w : "f", guns: String(q.g || "f"), dead: q.d ? 1 : 0, by: q.by, healing: q.h, view: v });
+    }
+    for (const b of botList()) {
+      knownNames.set(b.id, b.name);
+      if (host.acting) { out.push(b); continue; }
+      const v = views.get(b.id);
+      out.push({ ...b, x: v ? v.x : b.x, y: v ? v.y : b.y, a: v ? v.a : b.a, view: v });
+    }
+    if (me.inMatch && me.matchId === m.id) out.push(me);
+  }
+  FIGHTERS = out;
+}
+const fighters = () => FIGHTERS;
+const fighterById = (id) => FIGHTERS.find((f) => f.id === id) || null;
+function nameOf(id) {
+  if (id === "zone") return "the circle";
+  if (id === me.id) return myName;
+  const f = fighterById(id), tl = tally();
+  return f ? f.name : knownNames.get(id) || (tl && tl.e[id] && tl.e[id][2]) || "Someone";
+}
+let killsMemo = { tl: null, v: -1, n: new Map() };
+/** Kills come from the tally: how many times someone is down as "who got them". */
+function kills(id) {
+  const tl = tally();
+  if (!tl) return 0;
+  if (killsMemo.tl !== tl || killsMemo.v !== tl.v) { const n = new Map(); for (const e of Object.values(tl.e)) n.set(e[1], (n.get(e[1]) || 0) + 1); killsMemo = { tl, v: tl.v, n }; }
+  return killsMemo.n.get(id) || 0;
+}
+let itemsMemo = { w: null, v: -1, list: [] };
+/** The loot lying on the island right now: the map's own (not taken, and out of its crate) plus dropped loot. */
+function items() {
+  const w = world();
+  if (!w || !MAP) return NOTHING;
+  if (itemsMemo.w !== w || itemsMemo.v !== w.v) {
+    const list = MAP.loot.filter((it) => w.t[it.id] !== "x" && (it.crate < 0 || w.c[it.crate] === "x"));
+    for (const [id, k, x, y] of w.d || []) if (LOOT[k]) list.push({ id, k, x, y, crate: -1 });
+    itemsMemo = { w, v: w.v, list };
+  }
+  return itemsMemo.list;
+}
+const itemById = (id) => items().find((it) => it.id === id) || null;
+/** Who the camera follows: me while I'm in, else the one I'm watching (my killer first). */
+function viewer() {
+  if (me.inMatch && !me.dead) return me;
+  const alive = fighters().filter((f) => !f.dead);
+  let f = me.watch ? alive.find((o) => o.id === me.watch) : null;
+  if (!f) {
+    const tl = tally(), by = me.watch && tl && tl.e[me.watch] ? tl.e[me.watch][1] : null;
+    f = (by && alive.find((o) => o.id === by)) || alive.sort((a, b) => kills(b.id) - kills(a.id))[0] || null;
+    if (f) me.watch = f.id;
+  }
+  return f;
+}
+let prevCrates = "";
+/** Effects for world changes everyone sees: a crate breaking open. */
+function worldEffects() {
+  const c = crateBroken;
+  if (prevCrates && MAP) for (let i = 0; i < c.length; i++) if (c[i] === "x" && prevCrates[i] !== "x" && MAP.crates[i]) {
+    const k = MAP.crates[i]; spark(k.x + 26, k.y + 26, "#d9a066", 18); spark(k.x + 26, k.y + 26, "#8a5a2b", 10); fx.rings.push({ x: k.x + 26, y: k.y + 26, t: 0, color: "#f2d49b" });
+    if (Math.hypot(k.x - cam.x, k.y - cam.y) < 700) sfx("crate", 1);
+  }
+  prevCrates = c;
+}
+
+// ── DRAW ────────────────────────────────────────────────────────────────────────────
+const cv = $("game"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, safeTop = 0, safeLeft = 0; // safe = room the phone's notch takes (the minimap sits below it)
+function fit() {
+  DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR;
+  const r = $("safe").getBoundingClientRect(); safeTop = r.top; safeLeft = r.left;
+}
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+const cam = { x: CONFIG.map / 2, y: CONFIG.map / 2, z: 1, shake: 0 };
+const zoom = () => Math.sqrt(W * H) / (ATTRACT ? 740 : 900); // how much of the island fits on screen
+function spark(x, y, color, n) { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 220; fx.sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.2 + Math.random() * 0.35, color, size: 3 + Math.random() * 3 }); } }
+function explode(x, y, color) { spark(x, y, color, 34); spark(x, y, "#ffffff", 10); fx.rings.push({ x, y, t: 0, color }); if (Math.hypot(x - cam.x, y - cam.y) < 600) cam.shake = Math.max(cam.shake, 9); }
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); }
+
+function draw(dt, now) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = "#2c7aa3"; ctx.fillRect(0, 0, W, H);
+  const m = match();
+  if (!m || !MAP) return;
+  const M = CONFIG.map, t = Date.now(), zn = zoneAt(m, t), focus = viewer(), w = world();
+  cam.z = zoom();
+  if (focus) { const k = Math.min(1, dt * (ATTRACT ? 5 : 10)); cam.x += (focus.x - cam.x) * k; cam.y += (focus.y - cam.y) * k; }
+  for (const [key, view] of [["x", W / cam.z], ["y", H / cam.z]]) cam[key] = view >= M + 400 ? M / 2 : Math.max(view / 2 - 200, Math.min(M - view / 2 + 200, cam[key])); // a little sea at the edge, no more
+  cam.shake = Math.max(0, cam.shake - dt * 40);
+  const z = cam.z, sx = (Math.random() - 0.5) * cam.shake, sy = (Math.random() - 0.5) * cam.shake;
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, DPR * (W / 2 - cam.x * z + sx), DPR * (H / 2 - cam.y * z + sy));
+  const V = { x0: cam.x - W / 2 / z - 100, y0: cam.y - H / 2 / z - 100, x1: cam.x + W / 2 / z + 100, y1: cam.y + H / 2 / z + 100 };
+  const seen = (x, y, r) => x + r > V.x0 && x - r < V.x1 && y + r > V.y0 && y - r < V.y1;
+  // sea foam, beach, grass, darker and lighter patches, a faint grid
+  ctx.fillStyle = "#4b94b8"; rrect(-80, -80, M + 160, M + 160, 120); ctx.fill();
+  ctx.fillStyle = "#e3d29d"; rrect(-44, -44, M + 88, M + 88, 90); ctx.fill();
+  ctx.fillStyle = "#6c9c4c"; rrect(24, 24, M - 48, M - 48, 60); ctx.fill();
+  for (const b of MAP.blotches) if (seen(b.x, b.y, b.r) && b.x > 60 && b.y > 60 && b.x < M - 60 && b.y < M - 60) { ctx.fillStyle = b.dark ? "#5f8f4338" : "#7cab5a38"; circle(b.x, b.y, b.r); ctx.fill(); }
+  ctx.strokeStyle = "#00000012"; ctx.lineWidth = 2; ctx.beginPath();
+  for (let g = Math.ceil(Math.max(40, V.x0) / 100) * 100; g < Math.min(M - 40, V.x1); g += 100) { ctx.moveTo(g, Math.max(40, V.y0)); ctx.lineTo(g, Math.min(M - 40, V.y1)); }
+  for (let g = Math.ceil(Math.max(40, V.y0) / 100) * 100; g < Math.min(M - 40, V.y1); g += 100) { ctx.moveTo(Math.max(40, V.x0), g); ctx.lineTo(Math.min(M - 40, V.x1), g); }
+  ctx.stroke();
+  // house floors (planks)
+  const inside = focus ? houseAt(focus.x, focus.y) : null;
+  for (const h of MAP.houses) {
+    if (!seen(h.x + h.w / 2, h.y + h.h / 2, Math.max(h.w, h.h))) continue;
+    ctx.fillStyle = "#c79a68"; ctx.fillRect(h.x, h.y, h.w, h.h);
+    ctx.strokeStyle = "#a97d4f"; ctx.lineWidth = 2; ctx.beginPath();
+    for (let y = h.y + 22; y < h.y + h.h; y += 22) { ctx.moveTo(h.x, y); ctx.lineTo(h.x + h.w, y); }
+    ctx.stroke();
+  }
+  for (const k of fx.marks) { ctx.fillStyle = "#5a1f2a55"; circle(k.x, k.y, 26); ctx.fill(); ctx.strokeStyle = "#3a141c88"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(k.x - 9, k.y - 9); ctx.lineTo(k.x + 9, k.y + 9); ctx.moveTo(k.x + 9, k.y - 9); ctx.lineTo(k.x - 9, k.y + 9); ctx.stroke(); }
+  // loot: a pulsing ring and a little picture
+  for (const it of items()) if (seen(it.x, it.y, 30)) drawLoot(it, now, me.pending.has(it.id) && Date.now() - me.pending.get(it.id) < 900);
+  // crates, rocks
+  MAP.crates.forEach((c, i) => { if (crateBroken[i] !== "x" && seen(c.x + 26, c.y + 26, 40)) drawCrate(c, w && w.hp ? w.hp[i] : undefined); });
+  for (const r of MAP.rocks) if (seen(r.x, r.y, r.r)) {
+    ctx.fillStyle = "#00000026"; circle(r.x + 5, r.y + 7, r.r); ctx.fill();
+    ctx.fillStyle = "#8e939b"; circle(r.x, r.y, r.r); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = "#6c7178"; ctx.stroke();
+    ctx.fillStyle = "#a9aeb5"; circle(r.x - r.r * 0.25, r.y - r.r * 0.28, r.r * 0.5); ctx.fill();
+  }
+  for (const tr of MAP.trees) if (seen(tr.x, tr.y, tr.t)) { ctx.fillStyle = "#6b4a2b"; circle(tr.x, tr.y, tr.t); ctx.fill(); }
+  // fighters and bullets
+  for (const f of fighters()) if (!f.dead && seen(f.x, f.y, 60)) drawFighter(f, now, t);
+  ctx.lineCap = "round";
+  for (const b of bullets) {
+    if (b.w === "f") continue;
+    const sp = Math.hypot(b.vx, b.vy), tail = b.w === "s" ? 16 : 30;
+    ctx.strokeStyle = "#fff1b866"; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(b.x - b.vx / sp * tail, b.y - b.vy / sp * tail); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.strokeStyle = "#fffbe8"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(b.x - b.vx / sp * 10, b.y - b.vy / sp * 10); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (const p of fx.sparks) { ctx.globalAlpha = Math.min(1, p.life * 3); ctx.fillStyle = p.color; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
+  ctx.globalAlpha = 1;
+  // walls, tree tops, roofs (a roof hides who's inside, unless the camera is in there too)
+  ctx.fillStyle = "#4a3a2e";
+  for (const wl of MAP.walls) if (seen(wl.x + wl.w / 2, wl.y + wl.h / 2, Math.max(wl.w, wl.h))) ctx.fillRect(wl.x, wl.y, wl.w, wl.h);
+  for (const tr of MAP.trees) {
+    if (!seen(tr.x, tr.y, tr.r)) continue;
+    const under = focus && Math.hypot(focus.x - tr.x, focus.y - tr.y) < tr.r;
+    ctx.globalAlpha = under ? 0.45 : 0.94;
+    ctx.fillStyle = "#2f6b34"; circle(tr.x, tr.y, tr.r); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = "#245428"; ctx.stroke();
+    ctx.fillStyle = "#3f8442"; circle(tr.x - tr.r * 0.22, tr.y - tr.r * 0.25, tr.r * 0.55); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  for (const h of MAP.houses) {
+    h.roofA += ((h === inside ? 0 : 1) - h.roofA) * Math.min(1, dt * 8);
+    if (h.roofA < 0.02 || !seen(h.x + h.w / 2, h.y + h.h / 2, Math.max(h.w, h.h))) continue;
+    ctx.globalAlpha = h.roofA;
+    ctx.fillStyle = "#00000033"; ctx.fillRect(h.x - 2, h.y + 6, h.w + 16, h.h + 12);
+    ctx.fillStyle = h.roof; ctx.fillRect(h.x - 8, h.y - 8, h.w + 16, h.h + 16);
+    ctx.fillStyle = "#00000026"; if (h.w > h.h) ctx.fillRect(h.x - 8, h.y + h.h / 2, h.w + 16, h.h / 2 + 8); else ctx.fillRect(h.x + h.w / 2, h.y - 8, h.w / 2 + 8, h.h + 16);
+    ctx.strokeStyle = "#ffffff30"; ctx.lineWidth = 3; ctx.beginPath();
+    if (h.w > h.h) { ctx.moveTo(h.x - 8, h.y + h.h / 2); ctx.lineTo(h.x + h.w + 8, h.y + h.h / 2); } else { ctx.moveTo(h.x + h.w / 2, h.y - 8); ctx.lineTo(h.x + h.w / 2, h.y + h.h + 8); }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  for (let i = fx.rings.length - 1; i >= 0; i--) {
+    const r = fx.rings[i]; r.t += dt; if (r.t > 0.45) { fx.rings.splice(i, 1); continue; }
+    ctx.globalAlpha = 1 - r.t / 0.45; ctx.strokeStyle = r.color; ctx.lineWidth = 5; circle(r.x, r.y, 20 + r.t * 200); ctx.stroke();
+  }
+  ctx.globalAlpha = 1; ctx.textAlign = "center"; ctx.lineJoin = "round"; ctx.font = "800 18px system-ui, sans-serif";
+  for (const f of fx.texts) { ctx.globalAlpha = Math.min(1, f.life * 2); ctx.lineWidth = 4; ctx.strokeStyle = "#0b111a"; ctx.strokeText(f.text, f.x, f.y); ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y); }
+  ctx.globalAlpha = 1;
+  // the circle: everything outside it tinted, its edge, and where it goes next
+  ctx.fillStyle = "rgba(180, 30, 80, 0.30)"; ctx.beginPath(); ctx.rect(V.x0 - 50, V.y0 - 50, V.x1 - V.x0 + 100, V.y1 - V.y0 + 100);
+  ctx.arc(zn.x, zn.y, Math.max(0, zn.r), 0, Math.PI * 2, true); ctx.fill("evenodd");
+  ctx.strokeStyle = "#ffffffdd"; ctx.lineWidth = 5; circle(zn.x, zn.y, Math.max(0, zn.r)); ctx.stroke();
+  if (zn.next && zn.next.r > 0) { ctx.setLineDash([22, 16]); ctx.strokeStyle = "#ffffff99"; ctx.lineWidth = 3; circle(zn.next.x, zn.next.y, zn.next.r); ctx.stroke(); ctx.setLineDash([]); }
+  // screen space: a red edge when I'm hurt, the minimap
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const hurtAgo = now - me.hurtAt, zoneHurt = now - (me.zoneAt || -1e9) < 200;
+  if ((hurtAgo < 300 || zoneHurt) && !ATTRACT) {
+    const a = zoneHurt ? 0.35 : 0.5 * (1 - hurtAgo / 300), g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, "#ff000000"); g.addColorStop(1, `rgba(255,30,70,${a})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  if (!ATTRACT) drawMinimap(zn, focus);
+}
+function drawLoot(it, now, pending) {
+  const c = LOOT[it.k].color, pulse = 0.6 + 0.4 * Math.sin(now / 260 + it.id);
+  ctx.globalAlpha = pending ? 0.35 : 1;
+  ctx.fillStyle = "#00000030"; circle(it.x + 2, it.y + 4, 18); ctx.fill();
+  ctx.fillStyle = "#18202bcc"; circle(it.x, it.y, 17); ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = c; ctx.globalAlpha *= 0.5 + pulse * 0.5; circle(it.x, it.y, 17 + pulse * 3); ctx.stroke(); ctx.globalAlpha = pending ? 0.35 : 1;
+  const x = it.x, y = it.y;
+  ctx.fillStyle = c;
+  if (GUNS[it.k]) { const g = GUNS[it.k], L = g.len * 0.5 + 6; ctx.fillRect(x - L / 2, y - g.wid / 2 - 1, L, g.wid * 0.7 + 1); ctx.fillRect(x - L / 2, y - 1, 6, 9); }
+  else if (it.k === "a") { for (let i = -1; i <= 1; i++) { rrect(x + i * 6 - 2.5, y - 7, 5, 14, 2.5); ctx.fill(); } }
+  else if (it.k === "v") { rrect(x - 8, y - 9, 16, 18, 5); ctx.fill(); ctx.fillStyle = "#18202b"; ctx.fillRect(x - 1.5, y - 9, 3, 7); }
+  else { ctx.fillStyle = "#fff"; rrect(x - 9, y - 8, 18, 16, 3); ctx.fill(); ctx.fillStyle = c; ctx.fillRect(x - 2, y - 6, 4, 12); ctx.fillRect(x - 6, y - 2, 12, 4); }
+  ctx.globalAlpha = 1;
+}
+function drawCrate(c, hp) {
+  const dmg = hp === undefined ? 0 : 1 - hp / CONFIG.crateHp;
+  ctx.fillStyle = "#00000030"; ctx.fillRect(c.x + 4, c.y + 6, c.w, c.h);
+  ctx.fillStyle = dmg > 0.5 ? "#9b6b38" : "#b98245"; ctx.fillRect(c.x, c.y, c.w, c.h);
+  ctx.strokeStyle = "#7d5428"; ctx.lineWidth = 4; ctx.strokeRect(c.x + 2, c.y + 2, c.w - 4, c.h - 4);
+  ctx.beginPath(); ctx.moveTo(c.x + 6, c.y + 6); ctx.lineTo(c.x + c.w - 6, c.y + c.h - 6); ctx.moveTo(c.x + c.w - 6, c.y + 6); ctx.lineTo(c.x + 6, c.y + c.h - 6); ctx.stroke();
+}
+function drawFighter(f, now, t) {
+  const g = GUNS[f.w] || GUNS.f, x = f.x, y = f.y, firedAgo = now - (f.mine || (f.bot && host.acting) ? f.firedAt : f.view ? f.view.firedAt : -1e9);
+  const hurtAgo = now - (f.mine || (f.bot && host.acting) ? f.hurtAt : f.view ? f.view.hurtAt : -1e9);
+  ctx.fillStyle = "#00000038"; circle(x + 3, y + 5, R); ctx.fill();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(f.a);
+  ctx.lineWidth = 3; ctx.strokeStyle = "#0b111a";
+  if (g.len) { // the gun, both hands on it
+    const kick = firedAgo < 80 ? (1 - firedAgo / 80) * (f.w === "s" ? 7 : 3) : 0;
+    ctx.fillStyle = "#262b33"; rrect(R * 0.35 - kick, -g.wid / 2, R * 0.65 + g.len, g.wid, 3); ctx.fill();
+    if (firedAgo < 55) { ctx.fillStyle = "#fff3b0"; circle(R + g.len + 4 - kick, 0, f.w === "s" ? 11 : 8); ctx.fill(); }
+    ctx.fillStyle = f.color; circle(R * 0.8 - kick, 7, 6.5); ctx.fill(); ctx.stroke(); circle(R * 0.8 + 13 - kick, -4, 6.5); ctx.fill(); ctx.stroke();
+  } else { // fists: the one that punched comes forward
+    const punch = firedAgo < 180 ? Math.sin(firedAgo / 180 * Math.PI) * 18 : 0, right = Math.floor((f.firedAt || (f.view && f.view.firedAt) || 0) / 10) % 2;
+    ctx.fillStyle = f.color;
+    circle(R * 0.75 + (right ? punch : 0), R * 0.62, 7); ctx.fill(); ctx.stroke();
+    circle(R * 0.75 + (right ? 0 : punch), -R * 0.62, 7); ctx.fill(); ctx.stroke();
+  }
+  ctx.fillStyle = hurtAgo < 90 ? "#ffffff" : f.color; circle(0, 0, R); ctx.fill(); ctx.lineWidth = 3.5; ctx.stroke();
+  ctx.restore();
+  if (f.ar > 0) { ctx.strokeStyle = "#5ab8ff"; ctx.lineWidth = 2 + f.ar / 33; circle(x, y, R + 4); ctx.stroke(); }
+  if (f.mine && !ATTRACT) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 2; circle(x, y, R + 9); ctx.stroke(); }
+  const healing = f.mine || (f.bot && host.acting) ? f.healUntil : f.healing;
+  if (healing) { const k = f.healUntil ? 1 - (f.healUntil - t) / CONFIG.medMs : (now / 900) % 1; ctx.strokeStyle = "#7bea8c"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, R + 13, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke(); }
+  if (ATTRACT) return;
+  ctx.font = "700 13px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.lineJoin = "round"; ctx.lineWidth = 3.5; ctx.strokeStyle = "#0b111acc";
+  const label = f.mine ? "You" : f.name;
+  ctx.strokeText(label, x, y - R - 12); ctx.fillStyle = f.mine ? "#ffd166" : "#fff"; ctx.fillText(label, x, y - R - 12);
+  if (!f.mine && f.hp < CONFIG.hp) { ctx.fillStyle = "#0b111aaa"; ctx.fillRect(x - 20, y + R + 8, 40, 5); ctx.fillStyle = f.hp > 35 ? "#7bea8c" : "#ff5d73"; ctx.fillRect(x - 20, y + R + 8, 40 * Math.max(0, f.hp) / CONFIG.hp, 5); }
+}
+function drawMinimap(zn, focus) {
+  const M = CONFIG.map, size = Math.min(touchUI ? 92 : 140, W * 0.24), x0 = Math.max(12, safeLeft), y0 = Math.max(10, safeTop), k = size / M;
+  ctx.fillStyle = "#2c7aa3d9"; ctx.fillRect(x0, y0, size, size);
+  ctx.fillStyle = "#6c9c4c"; ctx.fillRect(x0 + 2, y0 + 2, size - 4, size - 4);
+  ctx.fillStyle = "#4a3a2e"; for (const h of MAP.houses) ctx.fillRect(x0 + h.x * k, y0 + h.y * k, Math.max(2, h.w * k), Math.max(2, h.h * k));
+  ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, size, size); ctx.clip();
+  ctx.fillStyle = "rgba(180, 30, 80, 0.45)"; ctx.beginPath(); ctx.rect(x0, y0, size, size); ctx.arc(x0 + zn.x * k, y0 + zn.y * k, Math.max(0, zn.r * k), 0, Math.PI * 2, true); ctx.fill("evenodd");
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; circle(x0 + zn.x * k, y0 + zn.y * k, Math.max(0, zn.r * k)); ctx.stroke();
+  if (zn.next && zn.next.r > 0) { ctx.setLineDash([4, 3]); ctx.strokeStyle = "#ffffffaa"; circle(x0 + zn.next.x * k, y0 + zn.next.y * k, zn.next.r * k); ctx.stroke(); ctx.setLineDash([]); }
+  ctx.restore();
+  ctx.strokeStyle = "#0b111a"; ctx.lineWidth = 2; ctx.strokeRect(x0, y0, size, size);
+  if (focus) { ctx.fillStyle = focus === me ? "#ffd166" : focus.color; circle(x0 + focus.x * k, y0 + focus.y * k, 3.5); ctx.fill(); ctx.strokeStyle = "#0b111a"; ctx.lineWidth = 1.5; ctx.stroke(); }
+}
+
+// ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT;
+document.body.classList.toggle("touch", touchUI);
+const feed = [];
+let board = null, dropped = false, toastUntil = 0, lastMatchShown = -1;
+const fmt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+function toast(text) { if (ATTRACT) return; $("toast").textContent = text; $("toast").style.opacity = 1; toastUntil = performance.now() + 1600; }
+// Weapon slots and the medkit button (built once).
+const slotBtns = SLOTS.map((k, i) => {
+  const b = document.createElement("button");
+  b.innerHTML = `<kbd>${i + 1}</kbd><b>${GUNS[k].name}</b><span></span>`;
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (me.w === k) startReload(me, Date.now()); else hold(me, k); });
+  $("slots").appendChild(b);
+  return b;
+});
+const medBtn = document.createElement("button");
+medBtn.className = "med"; medBtn.innerHTML = `<kbd>H</kbd><b>Medkit</b><span></span>`;
+medBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); startHeal(me, Date.now()); });
+$("slots").appendChild(medBtn);
+
+/** This match, best first: whoever is still in (most kills first), then everyone out by place. Always includes me. */
+function standings(m, n) {
+  const tl = tally(), inNow = [], out = [];
+  for (const id of aliveIds()) inNow.push({ id, place: m.phase === "over" && id === m.winner ? 1 : 0, name: nameOf(id), k: kills(id) });
+  if (tl) for (const [id, e] of Object.entries(tl.e)) out.push({ id, place: e[0], name: e[2], k: kills(id) });
+  const rows = [...inNow.sort((a, b) => b.k - a.k), ...out.sort((a, b) => a.place - b.place)], top = rows.slice(0, n);
+  const mine = rows.find((r) => r.id === me.id);
+  if (mine && !top.includes(mine)) top[n - 1] = mine;
+  return top;
+}
+/** Can Play again start the next match right now? Only when no person is still in this one. */
+function againState(m) {
+  if (m.phase === "over") return { ok: true, label: "Play again" };
+  const tl = tally(), n = fighters().filter((f) => !f.bot && !f.dead && !(tl && tl.e[f.id])).length;
+  return n ? { ok: false, label: `${n} still in…` } : { ok: true, label: "Play again" };
+}
+function hud(now) {
+  const m = match();
+  if (!m) return;
+  const t = Date.now(), zn = zoneAt(m, t), left = aliveIds().length, mine = kills(me.id);
+  if (ATTRACT) {
+    $("left").innerHTML = `${left} left`;
+    $("feed").innerHTML = feedHtml(now);
+    for (const id of ["hint", "net", "toast"]) $(id).textContent = "";
+    $("bars").hidden = $("slots").hidden = true;
+    return;
+  }
+  let zl = "";
+  if (m.phase === "play") zl = zn.next ? (zn.shrinking ? `<span class="warn">The circle is closing · ${fmt(zn.until - t)}</span>` : `The circle closes in ${fmt(zn.until - t)}`) : `<span class="warn">Final circle</span>`;
+  if (m.phase === "play" && me.inMatch && !me.dead && outside(zn, me)) zl = `<span class="warn">Outside the circle! Get back in</span>`;
+  $("left").innerHTML = `${left} left${me.inMatch ? ` · ${mine} kill${mine === 1 ? "" : "s"}` : ""}<small>${zl}</small>`;
+  $("feed").innerHTML = feedHtml(now);
+  if (now > toastUntil) $("toast").style.opacity = 0;
+  const playing = me.inMatch && !me.dead && m.phase === "play";
+  $("hint").style.opacity = playing && now - me.landedAt < 10000 ? 1 : 0;
+  $("hint").innerHTML = `<span>${touchUI ? "Left thumb moves · right thumb aims and shoots · walk over loot to grab it" : "WASD move · mouse aim · click shoot · 1–4 weapons · R reload · H medkit"}<br>Stay inside the circle. Last one standing wins.</span>`;
+  // health, armor, ammo, weapon slots
+  $("bars").hidden = $("slots").hidden = !playing;
+  if (playing) {
+    $("hp").querySelector("i").style.width = `${Math.max(0, me.hp)}%`; $("hp").classList.toggle("low", me.hp < 35);
+    $("ar").querySelector("i").style.width = `${me.ar}%`; $("ar").style.visibility = me.ar > 0 ? "visible" : "hidden";
+    const g = GUNS[me.w];
+    $("gun").textContent = me.healUntil ? "Using a medkit…" : me.reloadUntil ? "Reloading…" : g.mag ? `${g.name} ${me.mag[me.w]} / ${me.ammo}` : `Fists · ammo ${me.ammo}`;
+    slotBtns.forEach((b, i) => { const k = SLOTS[i]; b.className = (me.w === k ? "on" : "") + (owns(me, k) ? "" : " no"); b.lastChild.textContent = GUNS[k].mag ? (owns(me, k) ? me.mag[k] : "–") : ""; });
+    medBtn.lastChild.textContent = `×${me.med}`; medBtn.classList.toggle("no", !me.med);
+  }
+  const n = livePlayers().length;
+  $("net").textContent = net.offline ? "Offline: playing with bots" : dropped ? "Reconnecting…" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the match" : ""}`;
+  // results card, or the "watching" line
+  const over = m.phase === "over", out = me.inMatch && (me.dead || over), again = againState(m);
+  const showCard = over || (me.inMatch && me.dead && me.cardOpen);
+  $("over").hidden = !showCard;
+  $("watch").hidden = showCard || m.phase !== "play" || (me.inMatch && !me.dead);
+  for (const id of ["again", "again2"]) { $(id).disabled = !again.ok; $(id).textContent = again.label; }
+  if (!$("watch").hidden) {
+    const f = viewer();
+    $("watchText").textContent = (me.inMatch ? "" : "This match started without you. You're in the next one. ") + (f ? `Watching ${f.name}` : "");
+    $("results").hidden = !me.inMatch;
+  }
+  if (!showCard) return;
+  const tl = tally(), mineOut = tl && tl.e[me.id], place = m.winner === me.id ? 1 : mineOut ? mineOut[0] : left + 1;
+  const total = (tl ? Object.keys(tl.e).length : 0) + left;
+  $("overTitle").textContent = over ? (m.winner === me.id ? "Last one standing!" : m.winner ? `${m.wname || nameOf(m.winner)} is the last one standing` : "Nobody made it") : `You placed #${place}`;
+  $("overSub").textContent = !me.inMatch ? "You watched this one." : `#${place} of ${total} · ${mine} kill${mine === 1 ? "" : "s"}` +
+    (me.dead ? (me.by === "zone" ? " · caught outside the circle" : ` · taken out by ${nameOf(me.by)}`) : "");
+  $("standings").innerHTML = standings(m, 8).map((r) => `<li class="${r.id === me.id ? "me" : ""}"><em>${r.place ? "#" + r.place : "in"}</em>${esc(r.id === me.id ? myName : r.name)}<span>${r.k} kill${r.k === 1 ? "" : "s"}</span></li>`).join("");
+  $("watchBtn").hidden = over;
+  $("next").textContent = over ? `Next match in ${Math.max(0, Math.ceil((m.endsAt - t) / 1000))}s` : again.ok ? "" : "The next match starts when the last people still in are out.";
+  if (lastMatchShown !== m.id && (out || over)) { lastMatchShown = m.id; showBoard(out && me.submittedFor !== m.id ? mine : null); if (out) me.submittedFor = m.id; }
+}
+function feedHtml(now) {
+  return feed.filter((f) => now - f.at < 7000).map((f) => {
+    const v = `<b style="color:${f.vColor}">${esc(f.v === me.id ? "You" : f.vName)}</b>`;
+    if (f.by === "zone") return `<div>${v} <i>was caught by the circle</i></div>`;
+    return `<div><b style="color:${f.byColor}">${esc(f.by === me.id ? "You" : f.byName)}</b> <i>${esc(GUNS[f.w] ? GUNS[f.w].name.toLowerCase() : "✕")}</i> ${v}</div>`;
+  }).join("<br>");
+}
+function showBoard(n) {
+  const list = $("board");
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li>Loading…</li>";
+  (n === null ? Promise.resolve() : board.submit(n).catch(() => null)).then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No scores yet. You're first.</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+function playAgain() { if (host.acting) host.again = true; else net.send("again", {}); }
+$("again").onclick = playAgain; $("again2").onclick = playAgain;
+$("watchBtn").onclick = () => { me.cardOpen = false; };
+$("results").onclick = () => { me.cardOpen = true; };
+let audio = null; // made on the first tap or key (browsers block sound before that)
+function sfx(kind, vol = 1) {
+  if (!audio || ATTRACT) return;
+  const def = { shotp: [520, 180, 0.07, 0.035, "square"], shots: [220, 60, 0.16, 0.06, "sawtooth"], shotr: [700, 240, 0.05, 0.03, "square"], punch: [160, 90, 0.06, 0.05, "triangle"],
+    hurt: [180, 60, 0.2, 0.1, "sawtooth"], kill: [440, 990, 0.25, 0.08, "triangle"], tick: [1400, 900, 0.04, 0.04, "square"], pick: [660, 990, 0.09, 0.05, "sine"], crate: [300, 120, 0.12, 0.06, "triangle"] }[kind];
+  if (!def) return;
+  const [f0, f1, dur, v, type] = def, t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(v * vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+
+// ── INPUT ───────────────────────────────────────────────────────────────────────────
+const keys = new Set(), mouse = { x: 0, y: 0, seen: false, down: false };
+const MOVE = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] };
+addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+  try { audio ||= new AudioContext(); } catch {}
+  if (MOVE[k] || k === " ") e.preventDefault();
+  if (!e.repeat && !ATTRACT) {
+    if (k >= "1" && k <= "4") hold(me, SLOTS[+k - 1]);
+    if (k === "r") startReload(me, Date.now());
+    if (k === "h") startHeal(me, Date.now());
+    if (k === "q") cycleWeapon(1);
+  }
+  keys.add(k);
+});
+addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => { keys.clear(); mouse.down = false; });
+addEventListener("wheel", (e) => { if (!ATTRACT) cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+addEventListener("pointerdown", () => { try { audio ||= new AudioContext(); } catch {} }, { once: true });
+function cycleWeapon(dir) { const have = SLOTS.filter((k) => owns(me, k)), i = have.indexOf(me.w); hold(me, have[(i + dir + have.length) % have.length]); }
+// Twin thumb sticks: touch the left half to move, the right half to aim (and shoot).
+const sticks = { move: null, aim: null };
+cv.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (e.pointerType === "mouse") { if (e.button === 0) mouse.down = true; return; }
+  const side = e.clientX < innerWidth / 2 ? "move" : "aim";
+  if (sticks[side]) return;
+  sticks[side] = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, el: $(side === "move" ? "stickMove" : "stickAim") };
+  Object.assign(sticks[side].el.style, { left: e.clientX + "px", top: e.clientY + "px" }); sticks[side].el.hidden = false;
+});
+addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") { mouse.x = e.clientX; mouse.y = e.clientY; mouse.seen = true; return; }
+  for (const s of Object.values(sticks)) if (s && s.id === e.pointerId) {
+    let dx = e.clientX - s.x0, dy = e.clientY - s.y0; const d = Math.hypot(dx, dy);
+    if (d > 50) { dx *= 50 / d; dy *= 50 / d; }
+    s.dx = dx; s.dy = dy; s.el.firstChild.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+});
+for (const ev of ["pointerup", "pointercancel"]) addEventListener(ev, (e) => {
+  if (e.pointerType === "mouse") { if (e.button === 0) mouse.down = false; return; }
+  for (const side of ["move", "aim"]) if (sticks[side] && sticks[side].id === e.pointerId) { sticks[side].el.hidden = true; sticks[side] = null; }
+});
+document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+/** Turn keys, mouse and sticks into this frame's move, aim and trigger. Aim goes through the camera that drew the frame. */
+function readInput() {
+  input.mx = input.my = 0;
+  for (const k of keys) if (MOVE[k]) { input.mx += MOVE[k][0]; input.my += MOVE[k][1]; }
+  if (sticks.move) { input.mx = sticks.move.dx / 50; input.my = sticks.move.dy / 50; }
+  const aimLen = sticks.aim ? Math.hypot(sticks.aim.dx, sticks.aim.dy) : 0;
+  if (aimLen > 10) me.a = Math.atan2(sticks.aim.dy, sticks.aim.dx);
+  else if (mouse.seen && !sticks.move) me.a = Math.atan2(cam.y + (mouse.y - H / 2) / cam.z - me.y, cam.x + (mouse.x - W / 2) / cam.z - me.x);
+  else if (input.mx || input.my) me.a = Math.atan2(input.my, input.mx);
+  input.fire = aimLen > 22 || mouse.down || keys.has(" ");
+}
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+let last = performance.now(), lastHb = 0, lastHud = 0;
+function stepFx(dt) {
+  for (let i = fx.sparks.length - 1; i >= 0; i--) { const p = fx.sparks[i]; p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; if (p.life <= 0) fx.sparks.splice(i, 1); }
+  for (let i = fx.texts.length - 1; i >= 0; i--) { const f = fx.texts[i]; f.life -= dt; f.y -= 34 * dt; if (f.life <= 0) fx.texts.splice(i, 1); }
+  if (fx.marks.length > 40) fx.marks.shift();
+}
+function frame(now) {
+  requestAnimationFrame(frame); // first, so one bad frame can't stop the game
+  const t0 = performance.now(); // not `now`: the first frame after a freeze can be stamped from before it ended
+  if (frameAt && t0 - frameAt > 1000) { wokeAt = t0; host.acting = false; host.last = null; } // woke from a stall: drop my host copy, adopt state again (see isHost)
+  frameAt = t0;
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // never negative: the first frame can be stamped before `last`
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
+  if (!isHost()) host.acting = false;
+  const m0 = match(); if (m0) mapFor(m0.seed);
+  crateBroken = (world() || {}).c || "";
+  syncViews(dt); refreshFighters();
+  if (isHost()) { hostTick(dt, now); refreshFighters(); }
+  const m = match();
+  if (m) {
+    mapFor(m.seed); crateBroken = (world() || {}).c || "";
+    worldEffects();
+    if (!ATTRACT) readInput();
+    myTick(dt, m);
+  }
+  stepBullets(dt);
+  stepFx(dt);
+  draw(dt, now);
+  if (now - lastHud > 150) { lastHud = now; hud(now); }
+}
+
+(async function start() {
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.on("shot", (msg, from) => { if (msg && typeof msg.x === "number" && GUNS[msg.w]) addShot(from, msg.x, msg.y, msg.a, msg.w, msg.s); });
+  net.on("shots", (msg) => { if (msg && Array.isArray(msg.list)) for (const [id, x, y, a, w, s] of msg.list.slice(0, 40)) if (GUNS[w]) addShot(id, x, y, a, w, s); });
+  net.on("down", (msg) => onDown(msg));
+  net.on("take", (msg, from) => { if (host.acting && msg && typeof msg.id === "number") applyTake(from, msg.id); });
+  net.on("again", () => { if (host.acting) host.again = true; });
+  net.onDisconnect(() => { dropped = true; $("net").textContent = "Reconnecting…"; });
+  net.onReconnect(() => { dropped = false; });
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }).leaderboard(CONFIG.board);
+  const taken = new Set([...Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => p.c), ...sharedBots().map((b) => b.color)]);
+  me.id = net.sessionId; me.color = COLORS.find((c) => !taken.has(c)) || COLORS[Math.floor(Math.random() * COLORS.length)];
+  net.me.set({ n: myName, c: me.color, hb: Date.now() });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

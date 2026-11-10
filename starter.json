@@ -1,0 +1,21 @@
+{
+  "name": "Last Circle",
+  "genre": "shooter",
+  "dim": "2D",
+  "mode": "Versus",
+  "players": "2–24",
+  "hook": "Land, loot, outrun the circle. Last one standing wins.",
+  "how": "Drop onto the island, grab guns, armor and medkits from houses and crates, and stay inside the circle as it shrinks. Get knocked out and you watch the one who got you until the next match.",
+  "controls": "WASD and mouse, 1–4 weapons, R reload, H medkit; or two thumb sticks and on-screen buttons",
+  "uses": [
+    ["Leaderboard", "Each player's most kills in one match, shown on the results card."],
+    ["Host-run rounds", "The host's browser shrinks the circle on a timestamp schedule, hands out loot to the first claim, breaks crates, ranks who's out and starts the next match; if it leaves, the next player takes over."],
+    ["Bots", "Bots fill the match to about 16 fighters. They loot, fight, heal and run from the circle."],
+    ["Live sync", "Every player, bullet, pickup and crate shows up for everyone at once."]
+  ],
+  "ideas": [
+    "Add a sniper rifle that only turns up in crates",
+    "Make it a snowy island with frozen lakes",
+    "Add grenades you can throw over walls"
+  ]
+}
