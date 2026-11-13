@@ -91,7 +91,7 @@
  *   FIGHTERS ...... what people and bots share: firing, reloading, healing, picking things up
  *   BULLETS ....... bullets every screen flies, and who decides a hit
  *   MATCH (HOST) .. the match, loot, crates, who is out and in what place, the bots. Only the host writes these.
- *   BOT BRAIN ..... how a bot loots, fights, heals, finds doors and runs from the circle
+ *   BOT BRAIN ..... how a bot loots, breaks crates, fights, heals, finds doors and runs from the circle
  *   ME ............ landing, moving, shooting, looting, getting hit, watching. Each player writes its own.
  *   OTHERS ........ everyone else, eased between snapshots
  *   DRAW .......... camera, island, houses and roofs, loot, fighters, bullets, the circle, minimap
@@ -151,6 +151,8 @@ const CONFIG = {
   botReact: 0.65,       // seconds a bot waits before it shoots at someone new
   botFireSlow: 2.0,     // bots pull the trigger this much slower than people can
   botRange: 420,        // px: bots pick fights this close (a bolder bot a bit further)
+  botHitRange: 1000,    // px: a bot that gets shot goes after whoever did it from this far
+  botCrate: 2,          // how much a bot wants to break a crate open (a vest is 2.5, a first gun 8)
   botCalmMs: 20000,     // for this long after landing, bots loot and only fight back (or fight someone right next to them)
   board: "kills",       // leaderboard name
 };
@@ -242,6 +244,12 @@ let frameAt = 0, wokeAt = -1e9; // my loop's last frame, and when it last woke f
 const isHost = () => livePlayers()[0] === net.sessionId && performance.now() - frameAt < 1000 && performance.now() - wokeAt > 700;
 const $ = (id) => document.getElementById(id);
 const safeColor = (c) => (/^#[0-9a-fA-F]{3,8}$/.test(c) ? c : "#cccccc"); // colors from other screens end up in HTML
+/** A fighter's color for text on the dark kill feed: the dark ones are mixed with white so the name can be read. */
+function inkColor(c) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(c)) return "#ffffff";
+  const n = parseInt(c.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  return (r * 299 + g * 587 + b * 114) / 1000 > 105 ? c : `rgb(${[r, g, b].map((v) => Math.round(v + (255 - v) * 0.55)).join(",")})`;
+}
 
 // ── MAP ─────────────────────────────────────────────────────────────────────────────
 // Built from match.seed with a seeded random (mulberry32), so every screen builds the same island.
@@ -660,11 +668,12 @@ function hostTick(dt, now) {
 function vAbove(o, key) { const s = parseOnce(key, S.shared[key], null); return s && s.m === o.m && s.v >= o.v ? s.v + 1 : o.v; }
 
 // ── BOT BRAIN ───────────────────────────────────────────────────────────────────────
-// A bot loots until it has a gun, fights whoever it can see, heals when it's safe, uses doors,
-// and heads for the next circle before it closes. It aims a little late and a little wide.
+// A bot loots until it has a gun, breaks crates open, fights whoever it can see (or whoever shot it),
+// heals when it's safe, uses doors, and heads for the next circle before it closes. It aims a little
+// late and a little wide.
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function brainFor(b) {
-  Object.assign(b, { thinkAt: 0, foe: null, item: null, wp: null, seenAt: 0, hitBy: null, hitAt: 0, moodUntil: 0, hunting: false, flee: null, detour: 0, detourUntil: 0, checkAt: 0, lastX: b.x, lastY: b.y, seed: Math.random() * 9, nerve: 0.65 + Math.random() * 0.45 });
+  Object.assign(b, { thinkAt: 0, foe: null, item: null, crate: null, wp: null, seenAt: 0, hitBy: null, hitAt: 0, moodUntil: 0, hunting: false, flee: null, detour: 0, detourUntil: 0, checkAt: 0, lastX: b.x, lastY: b.y, seed: Math.random() * 9, nerve: 0.65 + Math.random() * 0.45 });
 }
 /** Is there loot worth walking to? Higher = better. */
 function lootValue(b, k) {
@@ -678,18 +687,29 @@ function chooseWeapon(b, d) {
   const ok = (k) => owns(b, k) && (b.mag[k] > 0 || b.ammo > 0);
   hold(b, d < 230 && ok("s") ? "s" : ok("r") ? "r" : ok("p") ? "p" : ok("s") ? "s" : "f");
 }
-/** Twice a second or so: pick loot, pick a foe, pick a weapon, maybe heal or reload. */
-function think(b, t, all, list, m) {
+/** Where bots like to be: well inside the circle as it will be soon. Loot, crates and wander points beyond it don't tempt them.
+ *  (The last circle closes to nothing, so there they just stay inside it as it shrinks.) */
+function botHome(z, t) {
+  const c = z.next && z.next.r > 0 && (z.shrinking || z.until - t < 12000) ? z.next : z;
+  return { x: c.x, y: c.y, r: Math.max(0, c.r * 0.85 - 30) };
+}
+/** Twice a second or so: pick loot or a crate to break open, pick a foe, pick a weapon, maybe heal or reload. */
+function think(b, t, all, list, m, home) {
   b.thinkAt = t + 300 + Math.random() * 250;
-  let best = null, bv = 0;
-  for (const it of list) { const v = lootValue(b, it.k), d = dist(it, b); if (v && d < 700 && v / (d + 120) > bv) { bv = v / (d + 120); best = it; } }
-  b.item = best ? best.id : null;
+  const inHome = (p) => dist(p, home) < home.r - 40;
+  let best = null, bv = 0, crate = null;
+  for (const it of list) { const v = lootValue(b, it.k), d = dist(it, b); if (v && d < 700 && inHome(it) && v / (d + 120) > bv) { bv = v / (d + 120); best = it; } }
+  MAP.crates.forEach((c, i) => { // a closed crate is worth about as much as a vest: nobody knows what's inside
+    const p = { x: c.x + c.w / 2, y: c.y + c.h / 2 }, d = dist(p, b);
+    if (crateBroken[i] !== "x" && d < 350 && inHome(p) && CONFIG.botCrate / (d + 120) > bv) { bv = CONFIG.botCrate / (d + 120); best = null; crate = i; }
+  });
+  b.item = best ? best.id : null; b.crate = crate;
   // a foe: whoever just hit it, or the one it's already fighting, else (when it's in the mood to hunt) the nearest one
   // it can see. Early in the match, and with bare fists, it would rather go find loot.
   if (t > b.moodUntil) { b.moodUntil = t + 5000 + Math.random() * 5000; b.hunting = Math.random() < Math.min(1, 0.2 + (t - m.t0) / 180000) * b.nerve * 1.2; }
   const armed = [..."psr"].some((k) => owns(b, k) && (b.mag[k] > 0 || b.ammo > 0)), calm = t - m.t0 < CONFIG.botCalmMs;
-  const near = (id) => all.find((f) => f.id === id && !f.dead && dist(f, b) < CONFIG.botRange && canSee(b, f));
-  const hitter = (t - b.hitAt < 3000 && near(b.hitBy)) || (armed && b.foe && near(b.foe)) || null;
+  const near = (id, range) => all.find((f) => f.id === id && !f.dead && dist(f, b) < range && canSee(b, f));
+  const hitter = (t - b.hitAt < 3000 && near(b.hitBy, CONFIG.botHitRange)) || (armed && b.foe && near(b.foe, CONFIG.botRange)) || null; // shot from far off: it comes for you
   let foe = hitter, fd = hitter ? dist(hitter, b) : !armed ? (best ? 60 : 120) : calm || !b.hunting ? 120 : CONFIG.botRange * b.nerve;
   if (!hitter) for (const f of all) { if (f.id === b.id || f.dead) continue; const d = dist(f, b); if (d < fd && canSee(b, f)) { fd = d; foe = f; } }
   if (foe && foe.id !== b.foe) b.seenAt = t;
@@ -697,13 +717,14 @@ function think(b, t, all, list, m) {
   b.flee = foe && b.hp < 40 && b.nerve < 0.95 ? foe.id : null; // hurt and timid: run, heal, come back later
   if (b.flee) { b.hunting = false; b.moodUntil = t + 8000; }
   chooseWeapon(b, foe ? fd : 400);
-  if (!foe && b.hp < 60 && b.med > 0) startHeal(b, t);
-  if (b.w !== "f" && b.mag[b.w] < (foe ? 1 : GUNS[b.w].mag) && b.ammo > 0) startReload(b, t);
+  if (!foe && b.hp < 60 && b.med > 0 && !b.reloadUntil) startHeal(b, t); // one thing at a time: each of these cancels the other
+  if (!b.healUntil && b.w !== "f" && b.mag[b.w] < (foe || crate !== null ? 1 : GUNS[b.w].mag) && b.ammo > 0) startReload(b, t); // tops up when idle; mid-fight or mid-crate only when empty
 }
 /** The next point to walk to on the way to (gx, gy): straight there, through a door, or around a house. */
 function route(b, gx, gy) {
   if (!wallBetween(b.x, b.y, gx, gy)) return { x: gx, y: gy };
   const hb = houseAt(b.x, b.y), hg = houseAt(gx, gy);
+  if (hb && hb === hg) return { x: gx, y: gy }; // both inside the same house: only a door post is in the way, slide past it
   let h = hb || hg;
   if (!h) for (let i = 1; i < 30 && !h; i++) h = houseAt(b.x + (gx - b.x) * i / 30, b.y + (gy - b.y) * i / 30);
   if (!h) return { x: gx, y: gy };
@@ -720,40 +741,49 @@ function route(b, gx, gy) {
   }
   return pick;
 }
-/** Somewhere a short walk away that's still inside the circle (bots stay spread out until the circle herds them). */
-function wanderPoint(b, z) {
+/** Somewhere a short walk away that's still well inside the circle (bots stay spread out until the circle herds them). */
+function wanderPoint(b, home) {
   const M = CONFIG.map;
   for (let i = 0; i < 12; i++) {
     const a = Math.random() * Math.PI * 2, d = 150 + Math.random() * 250;
     const p = { x: Math.max(80, Math.min(M - 80, b.x + Math.cos(a) * d)), y: Math.max(80, Math.min(M - 80, b.y + Math.sin(a) * d)) };
-    if (!solidAt(p.x, p.y) && Math.hypot(p.x - z.x, p.y - z.y) < z.r * 0.8) return p;
+    if (!solidAt(p.x, p.y) && dist(p, home) < home.r - 40) return p;
   }
-  return { x: b.x + (z.x - b.x) * 0.3, y: b.y + (z.y - b.y) * 0.3 };
+  return { x: b.x + (home.x - b.x) * 0.3, y: b.y + (home.y - b.y) * 0.3 };
 }
 function stepBot(b, dt, t, all, z) {
   if (b.dead) return;
   stepTimers(b, t); b.cd -= dt;
   const list = items();
-  if (t > b.thinkAt) think(b, t, all, list, match());
+  const home = botHome(z, t), run = dist(b, home) > home.r; // too far out: head for the middle
+  if (t > b.thinkAt) think(b, t, all, list, match(), home);
   const foe = b.foe ? all.find((f) => f.id === b.foe && !f.dead) : null;
-  const safe = z.next && (z.shrinking || z.until - t < 12000) ? z.next : z;      // where the circle will be soon
-  const run = Math.hypot(b.x - safe.x, b.y - safe.y) > Math.max(0, safe.r * 0.85 - 30);
-  let goal = null, mx = 0, my = 0;
-  if (run) goal = { x: safe.x, y: safe.y };
+  let goal = null, crate = null, mx = 0, my = 0;
+  if (run) goal = { x: home.x, y: home.y };
   else if (!foe && b.item !== null) { goal = list.find((i) => i.id === b.item) || null; if (!goal) b.item = null; }
-  if (!goal && !foe) { if (!b.wp || dist(b, b.wp) < 50 || outside(z, b.wp)) b.wp = wanderPoint(b, z); goal = b.wp; }
+  else if (!foe && b.crate !== null) { // a crate to break open: walk up to it, then hit it
+    const c = MAP.crates[b.crate];
+    if (c && crateBroken[b.crate] !== "x") goal = crate = { x: c.x + c.w / 2, y: c.y + c.h / 2 }; else b.crate = null;
+  }
+  if (!goal && !foe) { if (!b.wp || dist(b, b.wp) < 50 || dist(b.wp, home) > home.r) b.wp = wanderPoint(b, home); goal = b.wp; }
   if (foe && !run) { // fight: keep the weapon's distance and strafe
     const d = dist(foe, b), ang = Math.atan2(foe.y - b.y, foe.x - b.x), side = Math.sin(t / 700 + b.seed) > 0 ? 1 : -1;
     const close = b.flee ? -1.3 : d > KEEP[b.w] + 70 ? 1 : d < KEEP[b.w] - 70 ? -0.7 : 0;
     mx = Math.cos(ang) * close + Math.cos(ang + Math.PI / 2) * side * 0.7; my = Math.sin(ang) * close + Math.sin(ang + Math.PI / 2) * side * 0.7;
   } else if (goal) { const p = route(b, goal.x, goal.y); mx = p.x - b.x; my = p.y - b.y; }
   if (t < b.detourUntil) { mx = Math.cos(b.detour); my = Math.sin(b.detour); }
+  const atCrate = crate && dist(b, crate) < 80;
+  if (atCrate) mx = my = 0; // close enough: stand and hit it
   if (foe) { // aim a little behind where it's going, plus a wobble
     const d = dist(foe, b), lead = d / GUNS[b.w].speed * 0.8;
     const aimAt = Math.atan2(foe.y + (foe.vy || 0) * lead - b.y, foe.x + (foe.vx || 0) * lead - b.x) + Math.sin(t / 260 + b.seed) * CONFIG.botAim * (0.6 + d / 400); // worse from further away
     const diff = Math.atan2(Math.sin(aimAt - b.a), Math.cos(aimAt - b.a));
     b.a += Math.max(-8 * dt, Math.min(8 * dt, diff));
     if (Math.abs(diff) < 0.25 && t - b.seenAt > CONFIG.botReact * 1000 && d < GUNS[b.w].range + R && !b.healUntil) { const s = fire(b, t); if (s) host.shots.push([b.id, ...s]); }
+  } else if (atCrate) { // face the crate and shoot (or punch) it open
+    const to = Math.atan2(crate.y - b.y, crate.x - b.x), diff = Math.atan2(Math.sin(to - b.a), Math.cos(to - b.a));
+    b.a += Math.max(-8 * dt, Math.min(8 * dt, diff));
+    if (Math.abs(diff) < 0.25 && !b.healUntil) { const s = fire(b, t); if (s) host.shots.push([b.id, ...s]); }
   } else if (mx || my) { const diff = Math.atan2(Math.sin(Math.atan2(my, mx) - b.a), Math.cos(Math.atan2(my, mx) - b.a)); b.a += Math.max(-6 * dt, Math.min(6 * dt, diff)); }
   const len = Math.hypot(mx, my), sp = CONFIG.speed * 0.88 * (b.healUntil ? CONFIG.healSlow : 1), k = Math.min(1, dt * 10);
   b.vx += ((len > 0.01 ? mx / len : 0) * sp - b.vx) * k; b.vy += ((len > 0.01 ? my / len : 0) * sp - b.vy) * k;
@@ -812,7 +842,7 @@ function onDown(msg) {
   const m = match();
   if (!msg || !msg.v || !m || msg.m !== m.id) return;
   const v = fighterById(msg.v), k = fighterById(msg.by);
-  feed.unshift({ by: msg.by, v: msg.v, w: msg.w, byName: nameOf(msg.by), vName: nameOf(msg.v), byColor: k ? k.color : "#fff", vColor: v ? v.color : "#fff", at: performance.now() });
+  feed.unshift({ by: msg.by, v: msg.v, w: msg.w, byName: nameOf(msg.by), vName: nameOf(msg.v), byColor: k ? inkColor(k.color) : "#fff", vColor: v ? inkColor(v.color) : "#fff", at: performance.now() });
   feed.length = Math.min(feed.length, 5);
   const x = typeof msg.x === "number" ? msg.x : v && v.x, y = typeof msg.y === "number" ? msg.y : v && v.y;
   if (typeof x === "number") { explode(x, y, v ? v.color : "#fff"); fx.marks.push({ x, y }); }
@@ -1241,7 +1271,7 @@ function hud(now) {
 function feedHtml(now) {
   return feed.filter((f) => now - f.at < 7000).map((f) => {
     const v = `<b style="color:${f.vColor}">${esc(f.v === me.id ? "You" : f.vName)}</b>`;
-    if (f.by === "zone") return `<div>${v} <i>was caught by the circle</i></div>`;
+    if (f.by === "zone") return `<div>${v} <i>${f.v === me.id ? "were" : "was"} caught by the circle</i></div>`;
     return `<div><b style="color:${f.byColor}">${esc(f.by === me.id ? "You" : f.byName)}</b> <i>${esc(GUNS[f.w] ? GUNS[f.w].name.toLowerCase() : "✕")}</i> ${v}</div>`;
   }).join("<br>");
 }
@@ -1286,14 +1316,16 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 addEventListener("blur", () => { keys.clear(); mouse.down = false; });
-addEventListener("wheel", (e) => { if (!ATTRACT) cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+let wheelAt = 0; // a trackpad sends dozens of wheel events for one swipe: one weapon per 150ms
+addEventListener("wheel", (e) => { if (ATTRACT || !e.deltaY || performance.now() - wheelAt < 150) return; wheelAt = performance.now(); cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+addEventListener("contextmenu", (e) => e.preventDefault()); // no right-click menu over the game
 addEventListener("pointerdown", () => { try { audio ||= new AudioContext(); } catch {} }, { once: true });
 function cycleWeapon(dir) { const have = SLOTS.filter((k) => owns(me, k)), i = have.indexOf(me.w); hold(me, have[(i + dir + have.length) % have.length]); }
 // Twin thumb sticks: touch the left half to move, the right half to aim (and shoot).
 const sticks = { move: null, aim: null };
 cv.addEventListener("pointerdown", (e) => {
   e.preventDefault();
-  if (e.pointerType === "mouse") { if (e.button === 0) mouse.down = true; return; }
+  if (e.pointerType === "mouse") { mouse.x = e.clientX; mouse.y = e.clientY; mouse.seen = true; if (e.button === 0) mouse.down = true; return; }
   const side = e.clientX < innerWidth / 2 ? "move" : "aim";
   if (sticks[side]) return;
   sticks[side] = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, el: $(side === "move" ? "stickMove" : "stickAim") };
