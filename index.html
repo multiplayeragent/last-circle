@@ -47,6 +47,7 @@
   .card h2 { margin: 0 0 4px; font-size: 25px; line-height: 1.15; } #overSub { opacity: .85; font-size: 14px; }
   .card h3 { margin: 14px 0 4px; font-size: 12px; color: #ffd166; text-transform: uppercase; letter-spacing: .06em; text-align: left; }
   .card ol { margin: 0; padding-left: 26px; font-size: 14px; text-align: left; }
+  .card li.note { list-style: none; margin-left: -26px; } /* a status line, not a numbered entry */
   .card ul { margin: 0; padding: 0; list-style: none; font-size: 14px; text-align: left; } .card ul em { display: inline-block; width: 38px; font-style: normal; opacity: .6; }
   .card li span { float: right; font-variant-numeric: tabular-nums; opacity: .85; } .card li.me { color: #ffd166; font-weight: 700; }
   .card .row { display: flex; gap: 8px; margin-top: 16px; } .card .row button { flex: 1; }
@@ -74,7 +75,7 @@
 <div id="over" hidden><div class="card">
   <h2 id="overTitle"></h2><div id="overSub"></div>
   <h3>This match</h3><ul id="standings"></ul>
-  <h3>Most kills in one match</h3><ol id="board"><li>Loading…</li></ol>
+  <h3>Most kills in one match</h3><ol id="board"><li class="note">Loading…</li></ol>
   <div class="row"><button class="go" id="again">Play again</button><button class="soft" id="watchBtn">Watch</button></div><p id="next"></p>
 </div></div>
 <script>
@@ -1277,11 +1278,11 @@ function feedHtml(now) {
 }
 function showBoard(n) {
   const list = $("board");
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
-  list.innerHTML = "<li>Loading…</li>";
+  if (!board) { list.innerHTML = `<li class="note">Leaderboards need a connection.</li>`; return; }
+  list.innerHTML = `<li class="note">Loading…</li>`;
   (n === null ? Promise.resolve() : board.submit(n).catch(() => null)).then(() => board.top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No scores yet. You're first.</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : `<li class="note">No scores yet. You're first.</li>`;
+  }).catch(() => { list.innerHTML = `<li class="note">Couldn't load the leaderboard.</li>`; });
 }
 function playAgain() { if (host.acting) host.again = true; else net.send("again", {}); }
 $("again").onclick = playAgain; $("again2").onclick = playAgain;
