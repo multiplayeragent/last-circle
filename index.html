@@ -90,7 +90,7 @@
  *   MAP ........... the seeded island (houses, trees, rocks, crates, loot, landing spots) and collision
  *   ZONE .......... the safe circle, worked out from the timestamps in `match`
  *   FIGHTERS ...... what people and bots share: firing, reloading, healing, picking things up
- *   BULLETS ....... bullets every screen flies, and who decides a hit
+ *   BULLETS ....... bullets every screen flies, which shots to believe, and who decides a hit
  *   MATCH (HOST) .. the match, loot, crates, who is out and in what place, the bots. Only the host writes these.
  *   BOT BRAIN ..... how a bot loots, breaks crates, fights, heals, finds doors and runs from the circle
  *   ME ............ landing, moving, shooting, looting, getting hit, watching. Each player writes its own.
@@ -120,6 +120,9 @@
  *   - Loot: walking over an item sends "take" {id}. The host gives it to the first claim and adds
  *     [item, player, kind] to world.g; that player puts it in its own pockets.
  *   - Bot shots go out batched, 10 times a second: "shots" {list: [[bot, x, y, a, w, s], ...]}.
+ *   - Nobody trusts a message blindly (see shotOk): a "shot" must come from where its shooter stands, with a
+ *     weapon it carries, no faster than that weapon fires; "shots" only from the host; "down" only from the
+ *     one who fell (or from the host, for a bot).
  *   - "again": Play again. The next match starts at once if no person is still in this one.
  *   - ?attract plays offline with bots only (the preview video is recorded from it).
  *   - Leaderboard "kills": each player's most kills in one match, shown on the results card.
@@ -497,6 +500,19 @@ function stepBullets(dt) {
     }
     if (gone) bullets.splice(i, 1);
   }
+}
+
+/** Every screen checks a shot from someone else before flying it: the shooter is in this match and standing,
+ *  carries that weapon, fires from where it stands, and no faster than the weapon allows (a short burst of slack for lag). */
+const shotGate = new Map(); // shooter -> { at, n }: shots it may still fire right now
+function shotOk(from, msg) {
+  const f = fighterById(from), g = GUNS[msg.w];
+  if (!f || f.bot || f.dead || !g || (msg.w !== "f" && !owns(f, msg.w))) return false;
+  if (Math.hypot(msg.x - f.x, msg.y - f.y) > R + g.len + 220) return false; // its muzzle, plus room for its last ~0.5s of moving
+  const now = performance.now(), s = shotGate.get(from) || { at: now, n: 3 };
+  s.n = Math.min(3, s.n + (now - s.at) / 1000 / g.every); s.at = now; shotGate.set(from, s);
+  if (s.n < 1) return false;
+  s.n -= 1; return true;
 }
 
 // ── MATCH (HOST) ────────────────────────────────────────────────────────────────────
@@ -1308,7 +1324,8 @@ addEventListener("keydown", (e) => {
   try { audio ||= new AudioContext(); } catch {}
   if (MOVE[k] || k === " ") e.preventDefault();
   if (!e.repeat && !ATTRACT) {
-    if (k >= "1" && k <= "4") hold(me, SLOTS[+k - 1]);
+    const digit = /^(Digit|Numpad)([1-4])$/.exec(e.code); // by key position, so 1–4 work on any keyboard layout
+    if (digit) hold(me, SLOTS[+digit[2] - 1]);
     if (k === "r") startReload(me, Date.now());
     if (k === "h") startHeal(me, Date.now());
     if (k === "q") cycleWeapon(1);
@@ -1392,9 +1409,14 @@ function frame(now) {
 (async function start() {
   net = await connect();
   net.onState((st) => { S = st; });
-  net.on("shot", (msg, from) => { if (msg && typeof msg.x === "number" && GUNS[msg.w]) addShot(from, msg.x, msg.y, msg.a, msg.w, msg.s); });
-  net.on("shots", (msg) => { if (msg && Array.isArray(msg.list)) for (const [id, x, y, a, w, s] of msg.list.slice(0, 40)) if (GUNS[w]) addShot(id, x, y, a, w, s); });
-  net.on("down", (msg) => onDown(msg));
+  net.on("shot", (msg, from) => { if (msg && typeof msg.x === "number" && typeof msg.y === "number" && typeof msg.a === "number" && shotOk(from, msg)) addShot(from, msg.x, msg.y, msg.a, msg.w, msg.s); });
+  net.on("shots", (msg, from) => { // bots' shots: only from the host, only for bots still standing
+    if (!msg || !Array.isArray(msg.list) || from !== livePlayers()[0]) return;
+    for (const [id, x, y, a, w, s] of msg.list.slice(0, 40)) if (GUNS[w] && typeof x === "number" && typeof y === "number" && botList().some((b) => b.id === id && !b.dead)) addShot(id, x, y, a, w, s);
+  });
+  net.on("down", (msg, from) => { // you can only say YOU are down; a bot's fall only comes from the host
+    if (msg && (msg.v === from || (from === livePlayers()[0] && botList().some((b) => b.id === msg.v)))) onDown(msg);
+  });
   net.on("take", (msg, from) => { if (host.acting && msg && typeof msg.id === "number") applyTake(from, msg.id); });
   net.on("again", () => { if (host.acting) host.again = true; });
   net.onDisconnect(() => { dropped = true; $("net").textContent = "Reconnecting…"; });
